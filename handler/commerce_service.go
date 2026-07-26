@@ -1,4 +1,4 @@
-package handler
+﻿package handler
 
 import (
 	"crypto/rand"
@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/huey1in/KiroClaim/model"
+	"github.com/wp13461544040/KiroClaim/model"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"

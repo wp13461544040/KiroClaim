@@ -1,10 +1,10 @@
-package handler
+﻿package handler
 
 import (
 	"time"
 
-	"github.com/huey1in/KiroClaim/database"
-	"github.com/huey1in/KiroClaim/model"
+	"github.com/wp13461544040/KiroClaim/database"
+	"github.com/wp13461544040/KiroClaim/model"
 
 	"gorm.io/gorm"
 )

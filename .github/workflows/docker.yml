@@ -1,4 +1,4 @@
-name: Docker
+﻿name: Docker
 
 on:
   push:
@@ -36,7 +36,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/huey1in/kiroclaim
+          images: ghcr.io/wp13461544040/KiroClaim
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') }}
             type=ref,event=tag

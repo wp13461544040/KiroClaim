@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"database/sql"
@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/huey1in/KiroClaim/model"
+	"github.com/wp13461544040/KiroClaim/model"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"

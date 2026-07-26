@@ -1,4 +1,4 @@
-package handler
+﻿package handler
 
 import (
 	"bytes"
@@ -15,9 +15,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/huey1in/KiroClaim/database"
-	"github.com/huey1in/KiroClaim/model"
-	"github.com/huey1in/KiroClaim/utils"
+	"github.com/wp13461544040/KiroClaim/database"
+	"github.com/wp13461544040/KiroClaim/model"
+	"github.com/wp13461544040/KiroClaim/utils"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"

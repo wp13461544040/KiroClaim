@@ -1,4 +1,4 @@
-module github.com/huey1in/KiroClaim
+module github.com/wp13461544040/KiroClaim
 
 go 1.24
 

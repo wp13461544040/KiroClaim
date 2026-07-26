@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"context"
@@ -11,10 +11,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/huey1in/KiroClaim/database"
-	"github.com/huey1in/KiroClaim/handler"
-	"github.com/huey1in/KiroClaim/middleware"
-	"github.com/huey1in/KiroClaim/utils"
+	"github.com/wp13461544040/KiroClaim/database"
+	"github.com/wp13461544040/KiroClaim/handler"
+	"github.com/wp13461544040/KiroClaim/middleware"
+	"github.com/wp13461544040/KiroClaim/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"

@@ -1,12 +1,12 @@
-package database
+﻿package database
 
 import (
 	"log"
 	"os"
 	"time"
 
-	"github.com/huey1in/KiroClaim/model"
-	"github.com/huey1in/KiroClaim/utils"
+	"github.com/wp13461544040/KiroClaim/model"
+	"github.com/wp13461544040/KiroClaim/utils"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/driver/mysql"

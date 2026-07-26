@@ -1,9 +1,9 @@
-package model
+﻿package model
 
 import (
 	"time"
 
-	"github.com/huey1in/KiroClaim/utils"
+	"github.com/wp13461544040/KiroClaim/utils"
 
 	"gorm.io/gorm"
 )

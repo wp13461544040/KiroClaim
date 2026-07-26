@@ -1,4 +1,4 @@
-<p align="center">
+﻿<p align="center">
   <img src="static/apple-touch-icon.png" width="96" height="96" alt="KiroClaim 图标">
 </p>
 
@@ -7,7 +7,7 @@
 <p align="center">一个轻量的 Kiro 账号发卡、兑换与管理系统。</p>
 
 <p align="center">
-  <img alt="GitHub Tag" src="https://img.shields.io/github/v/tag/huey1in/KiroClaim?label=tag&sort=semver">
+  <img alt="GitHub Tag" src="https://img.shields.io/github/v/tag/wp13461544040/KiroClaim?label=tag&sort=semver">
   <img alt="Go" src="https://img.shields.io/badge/Go-1.24-00ADD8?logo=go&logoColor=white">
   <img alt="Gin" src="https://img.shields.io/badge/Gin-HTTP-00ADD8">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-Dev-003B57?logo=sqlite&logoColor=white">
@@ -50,7 +50,7 @@ mkdir -p kiroclaim && cd kiroclaim && curl -fsSL https://raw.githubusercontent.c
 默认镜像：
 
 ```text
-ghcr.io/huey1in/kiroclaim:latest
+ghcr.io/wp13461544040/KiroClaim:latest
 ```
 
 查看服务：

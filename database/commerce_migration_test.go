@@ -1,10 +1,10 @@
-package database
+﻿package database
 
 import (
 	"path/filepath"
 	"testing"
 
-	"github.com/huey1in/KiroClaim/model"
+	"github.com/wp13461544040/KiroClaim/model"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"

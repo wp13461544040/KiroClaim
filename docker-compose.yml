@@ -1,4 +1,4 @@
-name: kiroclaim
+﻿name: kiroclaim
 
 services:
   mysql:
@@ -23,7 +23,7 @@ services:
       retries: 12
 
   kiroclaim:
-    image: ghcr.io/huey1in/kiroclaim:latest
+    image: ghcr.io/wp13461544040/kiroclaim:latest
     container_name: kiroclaim
     restart: unless-stopped
     depends_on:

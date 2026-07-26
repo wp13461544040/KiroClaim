@@ -1,4 +1,4 @@
-name: Release
+﻿name: Release
 
 on:
   push:
@@ -38,7 +38,7 @@ jobs:
             local ext="$3"
             local dir="KiroClaim_${VERSION}_${goos}_${goarch}"
             mkdir -p "dist/${dir}"
-            CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" go build -trimpath -ldflags="-s -w -X github.com/huey1in/KiroClaim/utils.AppVersion=${VERSION}" -o "dist/${dir}/kiroclaim${ext}" .
+            CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" go build -trimpath -ldflags="-s -w -X github.com/wp13461544040/KiroClaim/utils.AppVersion=${VERSION}" -o "dist/${dir}/kiroclaim${ext}" .
             cp README.md .env.example "dist/${dir}/"
             cp -R static "dist/${dir}/static"
             if [ "${goos}" = "windows" ]; then
@@ -54,7 +54,7 @@ jobs:
           build_binary windows amd64 ".exe"
 
           mkdir -p "dist/KiroClaim_${VERSION}_docker"
-          sed "s|ghcr.io/huey1in/kiroclaim:latest|ghcr.io/huey1in/kiroclaim:${VERSION}|g" docker-compose.yml > "dist/KiroClaim_${VERSION}_docker/docker-compose.yml"
+          sed "s|ghcr.io/wp13461544040/KiroClaim:latest|ghcr.io/wp13461544040/KiroClaim:${VERSION}|g" docker-compose.yml > "dist/KiroClaim_${VERSION}_docker/docker-compose.yml"
           cp .env.example README.md "dist/KiroClaim_${VERSION}_docker/"
           (cd dist && python3 -m zipfile -c "KiroClaim_${VERSION}_docker.zip" "KiroClaim_${VERSION}_docker")
           rm -rf "dist/KiroClaim_${VERSION}_docker"

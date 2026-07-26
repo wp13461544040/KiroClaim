@@ -1,10 +1,10 @@
-package database
+﻿package database
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/huey1in/KiroClaim/model"
+	"github.com/wp13461544040/KiroClaim/model"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
