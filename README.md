@@ -38,7 +38,8 @@ KiroClaim 面向 Kiro 账号发卡兑换场景，提供账号导入、上游健�
 
 
 ```bash
-mkdir -p kiroclaim && cd kiroclaim && curl -fsSL https://raw.githubusercontent.com/huey1in/KiroClaim/main/docker-compose.yml -o docker-compose.yml && { echo "PORT=9527"; echo "MYSQL_DATABASE=kiroclaim"; echo "MYSQL_USER=kiroclaim"; echo "MYSQL_PASSWORD=$(openssl rand -hex 24)"; echo "MYSQL_ROOT_PASSWORD=$(openssl rand -hex 24)"; } > .env && docker compose up -d
+mkdir -p kiroclaim && cd kiroclaim && curl -fsSL https://raw.githubusercontent.com/wp13461544040/KiroClaim/main/docker-compose.yml
+ -o docker-compose.yml && { echo "PORT=9527"; echo "MYSQL_DATABASE=kiroclaim"; echo "MYSQL_USER=kiroclaim"; echo "MYSQL_PASSWORD=$(openssl rand -hex 24)"; echo "MYSQL_ROOT_PASSWORD=$(openssl rand -hex 24)"; } > .env && docker compose up -d
 ```
 
 启动后访问：
