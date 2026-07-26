@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>KiroClaim 卡密兑换中心</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="alternate icon" href="/static/favicon.ico">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="manifest" href="/static/site.webmanifest">
+  <link rel="stylesheet" href="/static/css/redeem.css">
+</head>
+<body>
+
+  <div class="wrap">
+
+    <div class="header">
+      <h1>卡密兑换中心</h1>
+      <p>输入卡密序列号，提取账号凭证</p>
+    </div>
+
+    <div class="card">
+
+      <div class="info">
+        <svg class="info-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+        <span>输入购买时获得的卡密提取凭证，首次使用将自动激活。</span>
+      </div>
+
+      <label class="field-label" for="inp-get">卡密序列号</label>
+      <input type="text" class="input" id="inp-get" placeholder="KIRO-XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="off" spellcheck="false">
+
+      <button class="btn" id="btn-get" onclick="reqGet()">
+        <span class="spinner"></span>
+        <span class="btn-text">提取凭证</span>
+      </button>
+
+      <div class="turnstile-box" id="captcha-get"></div>
+
+      <div class="result" id="out-get"></div>
+
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = '';
+    let _busy = false;
+    let _lastGetData = null;
+    let _accountPage = 1;
+    let _redeemStream = null;
+    let _streamExpected = 0;
+    let _streamReceived = 0;
+    let _streamDone = false;
+    let _streamFailed = false;
+    let _streamSkeletonPaused = false;
+    let _streamMessage = '';
+    const ACCOUNT_PAGE_SIZE = 5;
+
+    function getAccountPageSize() {
+      return window.matchMedia('(min-width: 1100px)').matches ? 6 : ACCOUNT_PAGE_SIZE;
+    }
+
+    const _captcha = {
+      enabled: false,
+      siteKey: '',
+      widgetGet: null,
+      tokenGet: '',
+      error: '',
+    };
+
+    // 页面加载时询问后端是否启用验证码
+    async function initCaptcha() {
+      try {
+        const r = await fetch(API_BASE + '/api/captcha/info');
+        const d = await r.json();
+        if (d.code !== 0 || !d.data || !d.data.enabled || !d.data.siteKey) return;
+        _captcha.enabled = true;
+        _captcha.siteKey = d.data.siteKey;
+        if (!looksLikeTurnstileSiteKey(_captcha.siteKey)) {
+          setCaptchaState('error', '人机验证 Site Key 配置异常，请在后台填写 Cloudflare Turnstile Site Key');
+          _captcha.error = '人机验证配置异常，请联系管理员';
+          return;
+        }
+        setCaptchaState('loading', '正在加载人机验证...');
+        loadTurnstileScript();
+      } catch (e) {
+        _captcha.enabled = true;
+        _captcha.error = '人机验证配置读取失败，请稍后重试';
+        setCaptchaState('error', _captcha.error);
+      }
+    }
+
+    function looksLikeTurnstileSiteKey(key) {
+      const value = String(key || '').trim();
+      return value.length >= 20 && /^[0-3]x/i.test(value);
+    }
+
+    function setCaptchaState(state, message) {
+      const box = document.getElementById('captcha-get');
+      if (!box) return;
+      box.classList.remove('loading', 'ready', 'error');
+      if (!state) {
+        box.innerHTML = '';
+        return;
+      }
+      box.classList.add(state);
+      if (state === 'loading') {
+        box.innerHTML =
+          '<div class="turnstile-state">' +
+            '<span class="turnstile-spinner" aria-hidden="true"></span>' +
+            '<span>' + esc(message || '正在加载人机验证...') + '</span>' +
+          '</div>';
+        return;
+      }
+      if (state === 'error') {
+        box.innerHTML =
+          '<div class="turnstile-state">' +
+            '<span class="turnstile-error-icon" aria-hidden="true">!</span>' +
+            '<span>' + esc(message || '人机验证加载失败，请刷新后重试') + '</span>' +
+          '</div>';
+      }
+    }
+
+    function loadTurnstileScript() {
+      window.onTurnstileLoad = function() {
+        try {
+          const box = document.getElementById('captcha-get');
+          if (box) box.innerHTML = '';
+          _captcha.widgetGet = turnstile.render('#captcha-get', {
+            sitekey: _captcha.siteKey,
+            theme: 'light',
+            callback: function(token) {
+              _captcha.error = '';
+              _captcha.tokenGet = token;
+            },
+            'error-callback':  function() {
+              _captcha.tokenGet = '';
+              _captcha.error = '人机验证校验失败，请重新尝试';
+            },
+            'expired-callback': function() {
+              _captcha.tokenGet = '';
+              _captcha.error = '人机验证已过期，请重新完成验证';
+            },
+          });
+          setCaptchaState('ready');
+        } catch (e) {
+          _captcha.error = '人机验证加载失败，请检查后台 Turnstile Site Key';
+          setCaptchaState('error', _captcha.error);
+        }
+      };
+      if (document.querySelector('script[data-turnstile-script="1"]')) return;
+      const s = document.createElement('script');
+      s.setAttribute('data-turnstile-script', '1');
+      s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad';
+      s.async = true; s.defer = true;
+      s.onerror = function() {
+        _captcha.error = '人机验证脚本加载失败，请检查网络或稍后重试';
+        setCaptchaState('error', _captcha.error);
+      };
+      document.head.appendChild(s);
+    }
+
+    // 请求后重置指定 widget，清空本地 token（Turnstile token 只能用一次）
+    function resetCaptcha(which) {
+      if (!_captcha.enabled || typeof turnstile === 'undefined') return;
+      if (which === 'get' && _captcha.widgetGet != null) {
+        try { turnstile.reset(_captcha.widgetGet); } catch(e) {}
+        _captcha.tokenGet = '';
+      }
+    }
+
+    function closeRedeemStream() {
+      if (_redeemStream) {
+        try { _redeemStream.close(); } catch (e) {}
+        _redeemStream = null;
+      }
+    }
+
+    function finishRedeem(btn) {
+      closeRedeemStream();
+      if (btn) {
+        btn.classList.remove('loading');
+        btn.disabled = false;
+      }
+      _busy = false;
+      resetCaptcha('get');
+    }
+
+    function streamUrlForCode(code) {
+      let url = API_BASE + '/token/' + encodeURIComponent(code) + '?stream=1';
+      if (_captcha.enabled && _captcha.tokenGet) {
+        url += '&captcha_token=' + encodeURIComponent(_captcha.tokenGet);
+      }
+      return url;
+    }
+
+    function reqGet() {
+      if (_busy) return; _busy = true;
+      const code = document.getElementById('inp-get').value.trim();
+      if (!code) { _busy = false; return; }
+      const out = document.getElementById('out-get');
+      if (_captcha.enabled && !_captcha.tokenGet) {
+        showError(out, _captcha.error || '请先完成人机验证');
+        _busy = false;
+        return;
+      }
+      const btn = document.getElementById('btn-get');
+      btn.classList.add('loading'); btn.disabled = true;
+      out.innerHTML = '';
+      closeRedeemStream();
+      _lastGetData = [];
+      _streamExpected = 0;
+      _streamReceived = 0;
+      _streamDone = false;
+      _streamFailed = false;
+      _streamSkeletonPaused = false;
+      _streamMessage = '正在连接发货通道...';
+      _accountPage = 1;
+      paintGet(out);
+
+      const source = new EventSource(streamUrlForCode(code));
+      _redeemStream = source;
+
+      source.addEventListener('init', function(event) {
+        const data = parseStreamEvent(event);
+        _streamExpected = Math.max(0, Number(data.total) || 0);
+        _streamReceived = 0;
+        _streamSkeletonPaused = false;
+        _streamMessage = '正在检查账号并发货...';
+        _lastGetData = new Array(_streamExpected).fill(null);
+        _accountPage = 1;
+        paintGet(out);
+      });
+
+      source.addEventListener('account', function(event) {
+        const data = parseStreamEvent(event);
+        const account = data.account || null;
+        let index = Number(data.index);
+        if (!Number.isFinite(index) || index < 0) index = _streamReceived;
+        if (!_streamExpected || index >= _lastGetData.length) {
+          _streamExpected = Math.max(_streamExpected, index + 1);
+          while (_lastGetData.length < _streamExpected) _lastGetData.push(null);
+        }
+        _lastGetData[index] = account;
+        _streamReceived = normalizeAccounts(_lastGetData).filter(Boolean).length;
+        _streamSkeletonPaused = false;
+        _streamMessage = '正在提取账号 ' + _streamReceived + ' / ' + _streamExpected;
+        paintGet(out);
+      });
+
+      source.addEventListener('done', function(event) {
+        const accounts = normalizeAccounts(_lastGetData).filter(Boolean);
+        _lastGetData = accounts;
+        _streamReceived = accounts.length;
+        _streamExpected = accounts.length;
+        _streamDone = true;
+        _streamSkeletonPaused = false;
+        _streamMessage = '成功提取账号';
+        paintGet(out);
+        finishRedeem(btn);
+      });
+
+      source.addEventListener('fail', function(event) {
+        const data = parseStreamEvent(event);
+        _streamFailed = true;
+        _streamSkeletonPaused = data.reason === 'account_pool_shortage' || data.reason === 'account_deleted';
+        _streamMessage = data.message || '提取失败，请稍后再试';
+        if (normalizeAccounts(_lastGetData).filter(Boolean).length > 0) {
+          paintGet(out);
+        } else {
+          showError(out, _streamMessage);
+        }
+        finishRedeem(btn);
+      });
+
+      source.onerror = function() {
+        if (_streamDone || _streamFailed) return;
+        _streamFailed = true;
+        _streamMessage = '发货通道连接失败，请稍后重试';
+        if (normalizeAccounts(_lastGetData).filter(Boolean).length > 0) {
+          paintGet(out);
+        } else {
+          showError(out, _streamMessage);
+        }
+        finishRedeem(btn);
+      };
+    }
+
+    function parseStreamEvent(event) {
+      try { return JSON.parse(event.data || '{}'); } catch (e) { return {}; }
+    }
+
+    function legacyPaintGet(box) {
+      const jsonStr = JSON.stringify(_lastGetData, null, 2);
+      box.innerHTML =
+        '<div class="status ok"><span class="status-dot"></span>成功提取凭证</div>' +
+        '<div class="result-title">账号凭证</div>' +
+        '<pre class="json">' + esc(jsonStr) + '</pre>' +
+        '<div class="btn-row">' +
+          '<button class="copy-btn" onclick="copyGetResult(this)">复制 JSON</button>' +
+          '<button class="download-btn" onclick="downloadGetResult(this)">下载 JSON</button>' +
+        '</div>';
+    }
+
+    function copyGetResult(btn) {
+      if (!_lastGetData) return;
+      doClipboard(btn, JSON.stringify(_lastGetData, null, 2), '复制 JSON');
+    }
+
+    function downloadGetResult(btn) {
+      if (!_lastGetData) return;
+      var jsonStr = JSON.stringify(_lastGetData, null, 2);
+      var blob = new Blob([jsonStr], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'kiro-credentials.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      btn.textContent = '已下载';
+      btn.classList.add('done');
+      setTimeout(function() { btn.textContent = '下载 JSON'; btn.classList.remove('done'); }, 2000);
+    }
+
+    function normalizeAccounts(data) {
+      if (Array.isArray(data)) return data;
+      if (data && Array.isArray(data.accounts)) return data.accounts;
+      if (data && data.account) return [data.account];
+      if (data && typeof data === 'object') return [data];
+      return [];
+    }
+
+    function paintGet(box) {
+      const accounts = normalizeAccounts(_lastGetData);
+      box.innerHTML =
+        '<div class="status ok"><span class="status-dot"></span>成功提取账号凭证</div>' +
+        '<div class="result-title">账号凭证</div>' +
+        '<div class="account-list">' + accounts.map(renderAccountCard).join('') + '</div>' +
+        '<div class="btn-row">' +
+          '<button class="copy-btn" onclick="copyGetResult(this)">复制完整 JSON</button>' +
+          '<button class="download-btn" onclick="downloadGetResult(this)">下载 JSON</button>' +
+        '</div>';
+    }
+
+    function renderAccountCard(account, index) {
+      const title = account.email || account.Email || ('账号 #' + (index + 1));
+      const provider = account.provider || account.Provider || '-';
+      const region = account.region || account.Region || '-';
+      const fields = [
+        ['accessToken', 'Access Token', account.accessToken || account.AccessToken],
+        ['refreshToken', 'Refresh Token', account.refreshToken || account.RefreshToken],
+        ['clientId', 'Client ID', account.clientId || account.ClientId],
+        ['clientSecret', 'Client Secret', account.clientSecret || account.ClientSecret],
+        ['region', 'Region', region],
+        ['provider', 'Provider', provider]
+      ];
+
+      return '<div class="account-card">' +
+        '<div class="account-card-head">' +
+          '<div class="account-card-title">' + esc(title) + '</div>' +
+          '<span class="account-tag">' + esc(String(provider).toUpperCase()) + '</span>' +
+        '</div>' +
+        '<div class="account-card-body">' +
+          fields.map(function(field) {
+            return renderAccountField(index, field[0], field[1], field[2]);
+          }).join('') +
+        '</div>' +
+      '</div>';
+    }
+
+    function renderAccountField(index, key, label, value) {
+      const text = value == null || value === '' ? '-' : String(value);
+      const copyBtn = text === '-'
+        ? ''
+        : '<button class="field-copy-btn" data-index="' + index + '" data-key="' + esc(key) + '" onclick="copyAccountField(this)">复制</button>';
+      return '<div class="account-field">' +
+        '<div class="account-field-head">' +
+          '<span class="account-field-label">' + esc(label) + '</span>' +
+          copyBtn +
+        '</div>' +
+        '<div class="account-field-value">' + esc(text) + '</div>' +
+      '</div>';
+    }
+
+    function copyAccountField(btn) {
+      const index = Number(btn.dataset.index) || 0;
+      const key = btn.dataset.key || '';
+      const accounts = normalizeAccounts(_lastGetData);
+      const account = accounts[index] || {};
+      const aliases = {
+        accessToken: ['accessToken', 'AccessToken'],
+        refreshToken: ['refreshToken', 'RefreshToken'],
+        clientId: ['clientId', 'ClientId'],
+        clientSecret: ['clientSecret', 'ClientSecret'],
+        region: ['region', 'Region'],
+        provider: ['provider', 'Provider']
+      }[key] || [key];
+      let value = '';
+      for (let i = 0; i < aliases.length; i++) {
+        if (account[aliases[i]]) {
+          value = account[aliases[i]];
+          break;
+        }
+      }
+      if (!value) return;
+      doClipboard(btn, String(value), '复制');
+    }
+
+    function copyGetResult(btn) {
+      if (!_lastGetData) return;
+      doClipboard(btn, JSON.stringify(_lastGetData, null, 2), '复制完整 JSON');
+    }
+
+    function downloadGetResult(btn) {
+      if (!_lastGetData) return;
+      var jsonStr = JSON.stringify(_lastGetData, null, 2);
+      var blob = new Blob([jsonStr], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'kiro-credentials.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      btn.textContent = '已下载';
+      btn.classList.add('done');
+      setTimeout(function() { btn.textContent = '下载 JSON'; btn.classList.remove('done'); }, 2000);
+    }
+
+    function paintGet(box) {
+      const accounts = normalizeAccounts(_lastGetData);
+      box.innerHTML =
+        '<div class="status ok"><span class="status-dot"></span>成功提取账号</div>' +
+        '<div class="result-title">账号信息</div>' +
+        '<div class="account-list">' + accounts.map(renderAccountCard).join('') + '</div>' +
+        '<div class="btn-row">' +
+          '<button class="copy-btn" onclick="copyGetResult(this)">复制全部</button>' +
+          '<button class="download-btn" onclick="downloadGetResult(this)">下载 JSON</button>' +
+        '</div>';
+    }
+
+    function renderAccountCard(account, index) {
+      if (!account) return renderAccountSkeleton(index);
+      const email = account.email || account.Email || '-';
+      const provider = account.provider || account.Provider || '-';
+      const region = account.region || account.Region || '-';
+      const subscription = account.subscription || account.Subscription || '-';
+      const usedRaw = Number(account.creditUsed ?? account.CreditUsed ?? 0);
+      const limitRaw = Number(account.creditLimit ?? account.CreditLimit ?? 0);
+      const used = Number.isFinite(usedRaw) ? usedRaw : 0;
+      const limit = Number.isFinite(limitRaw) ? limitRaw : 0;
+
+      return '<div class="account-card">' +
+        '<div class="account-card-head">' +
+          '<div class="account-card-title">' + esc(email === '-' ? ('账号 #' + (index + 1)) : email) + '</div>' +
+          '<button class="copy-btn" onclick="copyCredentialJson(this,' + index + ')">复制凭证</button>' +
+        '</div>' +
+        '<div class="account-card-body">' +
+          '<div class="account-info-grid">' +
+            renderInfoItem('订阅类型', subscription, false) +
+            renderUsageItem(used, limit) +
+            renderInfoItem('区域', region, false) +
+            renderInfoItem('Provider', provider, false) +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }
+
+    function renderAccountSkeleton(index) {
+      return '<div class="account-card skeleton' + (_streamSkeletonPaused ? ' paused' : '') + '">' +
+        '<div class="account-card-head">' +
+          '<div class="skeleton-line skeleton-title"></div>' +
+          '<div class="skeleton-pill"></div>' +
+        '</div>' +
+        '<div class="account-card-body">' +
+          '<div class="account-info-grid">' +
+            renderSkeletonInfoItem() +
+            renderSkeletonInfoItem() +
+            renderSkeletonInfoItem() +
+            renderSkeletonInfoItem() +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }
+
+    function renderSkeletonInfoItem() {
+      return '<div class="account-info-item">' +
+        '<div class="account-info-label"><span class="skeleton-line" style="width:48px;height:10px"></span></div>' +
+        '<div class="account-info-value"><span class="skeleton-line skeleton-value"></span></div>' +
+      '</div>';
+    }
+
+    function renderInfoItem(label, value, full) {
+      const text = value == null || value === '' ? '-' : String(value);
+      return '<div class="account-info-item' + (full ? ' full' : '') + '">' +
+        '<div class="account-info-label">' + esc(label) + '</div>' +
+        '<div class="account-info-value">' + esc(text) + '</div>' +
+      '</div>';
+    }
+
+    function renderUsageItem(used, limit) {
+      if (limit <= 0) return renderInfoItem('额度用量', '-', false);
+      const percent = Math.max(0, Math.min(100, used / limit * 100));
+      const fillClass = percent >= 90 ? ' danger' : (percent >= 70 ? ' warn' : '');
+      const usedText = used % 1 === 0 ? used.toFixed(0) : used.toFixed(1);
+      const limitText = limit % 1 === 0 ? limit.toFixed(0) : limit.toFixed(1);
+      return '<div class="account-info-item usage-item">' +
+        '<div class="account-info-label">额度用量</div>' +
+        '<div class="usage-value">' +
+          '<span class="account-info-value">' + esc(usedText + ' / ' + limitText) + '</span>' +
+          '<span class="usage-percent">' + percent.toFixed(0) + '%</span>' +
+        '</div>' +
+        '<div class="usage-meter"><div class="usage-meter-fill' + fillClass + '" style="width:' + percent.toFixed(2) + '%"></div></div>' +
+      '</div>';
+    }
+
+    function credentialJson(account) {
+      account = account || {};
+      return {
+        accessToken: account.accessToken || account.AccessToken || '',
+        refreshToken: account.refreshToken || account.RefreshToken || '',
+        clientId: account.clientId || account.ClientId || '',
+        clientSecret: account.clientSecret || account.ClientSecret || ''
+      };
+    }
+
+    function allCredentialJson() {
+      return normalizeAccounts(_lastGetData).filter(Boolean).map(credentialJson);
+    }
+
+    function copyCredentialJson(btn, index) {
+      const account = normalizeAccounts(_lastGetData)[index] || {};
+      if (!account || !account.accessToken && !account.AccessToken && !account.refreshToken && !account.RefreshToken) return;
+      doClipboard(btn, JSON.stringify(credentialJson(account), null, 2), '复制凭证');
+    }
+
+    function copyGetResult(btn) {
+      if (!_lastGetData) return;
+      doClipboard(btn, JSON.stringify(allCredentialJson(), null, 2), '复制全部');
+    }
+
+    function downloadGetResult(btn) {
+      if (!_lastGetData) return;
+      var jsonStr = JSON.stringify(allCredentialJson(), null, 2);
+      var blob = new Blob([jsonStr], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'kiro-credentials.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      btn.textContent = '已下载';
+      btn.classList.add('done');
+      setTimeout(function() { btn.textContent = '下载 JSON'; btn.classList.remove('done'); }, 2000);
+    }
+
+    function getAccountScrollState(box) {
+      const scroll = box ? box.querySelector('.account-scroll') : null;
+      if (!scroll) return null;
+      return { top: scroll.scrollTop, left: scroll.scrollLeft };
+    }
+
+    function restoreAccountScrollState(box, state) {
+      if (!state) return;
+      const scroll = box ? box.querySelector('.account-scroll') : null;
+      if (!scroll) return;
+      const maxTop = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+      const maxLeft = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+      scroll.scrollTop = Math.min(Math.max(0, state.top), maxTop);
+      scroll.scrollLeft = Math.min(Math.max(0, state.left), maxLeft);
+    }
+
+    function paintGet(box, options) {
+      options = options || {};
+      const scrollState = options.preserveScroll === false ? null : getAccountScrollState(box);
+      const accounts = normalizeAccounts(_lastGetData);
+      const readyCount = accounts.filter(Boolean).length;
+      const expectedCount = Math.max(_streamExpected || 0, accounts.length);
+      const pageSize = getAccountPageSize();
+      const totalPages = Math.max(1, Math.ceil(Math.max(expectedCount, 1) / pageSize));
+      if (_accountPage > totalPages) _accountPage = totalPages;
+      if (_accountPage < 1) _accountPage = 1;
+      const start = (_accountPage - 1) * pageSize;
+      const slots = accounts.slice();
+      while (slots.length < expectedCount) slots.push(null);
+      const pageAccounts = slots.slice(start, start + pageSize);
+      const streaming = !_streamDone && !_streamFailed && expectedCount > readyCount;
+      const statusClass = _streamFailed ? 'danger' : 'ok';
+      const statusText = _streamFailed
+        ? (_streamMessage || '提取失败')
+        : streaming
+          ? (_streamMessage || ('正在提取账号 ' + readyCount + ' / ' + expectedCount))
+          : '成功提取账号';
+      const actionsDisabled = readyCount === 0 ? ' disabled' : '';
+
+      box.innerHTML =
+        '<div class="status ' + statusClass + '"><span class="status-dot"></span>' + esc(statusText) + '</div>' +
+        '<div class="result-title">账号信息</div>' +
+        '<div class="account-scroll"><div class="account-list">' + pageAccounts.map(function(account, idx) {
+          return renderAccountCard(account, start + idx);
+        }).join('') + '</div></div>' +
+        renderAccountPager(Math.max(expectedCount, readyCount), totalPages) +
+        '<div class="btn-row">' +
+          '<button class="copy-btn" onclick="copyGetResult(this)"' + actionsDisabled + '>复制全部</button>' +
+          '<button class="download-btn" onclick="downloadGetResult(this)"' + actionsDisabled + '>下载 JSON</button>' +
+        '</div>';
+      restoreAccountScrollState(box, scrollState);
+      if (scrollState && typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(function() {
+          restoreAccountScrollState(box, scrollState);
+        });
+      }
+    }
+
+    function renderAccountPager(total, totalPages) {
+      if (totalPages <= 1) return '';
+      const buttons = [];
+      buttons.push('<button class="pager-btn" ' + (_accountPage <= 1 ? 'disabled' : '') + ' onclick="changeAccountPage(' + (_accountPage - 1) + ')">上一页</button>');
+      for (let i = 1; i <= totalPages; i++) {
+        if (i === 1 || i === totalPages || Math.abs(i - _accountPage) <= 1) {
+          buttons.push('<button class="pager-btn' + (i === _accountPage ? ' active' : '') + '" onclick="changeAccountPage(' + i + ')">' + i + '</button>');
+        } else if (buttons[buttons.length - 1] !== '<span class="pager-info">...</span>') {
+          buttons.push('<span class="pager-info">...</span>');
+        }
+      }
+      buttons.push('<button class="pager-btn" ' + (_accountPage >= totalPages ? 'disabled' : '') + ' onclick="changeAccountPage(' + (_accountPage + 1) + ')">下一页</button>');
+      return '<div class="account-pager">' + buttons.join('') + '<span class="pager-info">共 ' + total + ' 个</span></div>';
+    }
+
+    function changeAccountPage(page) {
+      _accountPage = page;
+      const out = document.getElementById('out-get');
+      if (out && _lastGetData) paintGet(out, { preserveScroll: false });
+    }
+
+    function doClipboard(btn, text, originalLabel) {
+      let ok = false;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        try { navigator.clipboard.writeText(text); ok = true; } catch(e) {}
+      }
+      if (!ok) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { ok = document.execCommand('copy'); } catch(e) {}
+        document.body.removeChild(ta);
+      }
+      if (ok) {
+        btn.textContent = '已复制到剪贴板';
+        btn.classList.add('copied');
+        setTimeout(function() { btn.textContent = originalLabel; btn.classList.remove('copied'); }, 2000);
+      } else {
+        btn.textContent = '复制失败，请手动选择';
+        setTimeout(function() { btn.textContent = originalLabel; }, 2500);
+      }
+    }
+
+    function doClipboard(btn, text, originalLabel) {
+      let ok = false;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        try { navigator.clipboard.writeText(text); ok = true; } catch(e) {}
+      }
+      if (!ok) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { ok = document.execCommand('copy'); } catch(e) {}
+        document.body.removeChild(ta);
+      }
+      if (ok) {
+        btn.textContent = '已复制';
+        btn.classList.add('copied');
+        setTimeout(function() { btn.textContent = originalLabel; btn.classList.remove('copied'); }, 2000);
+      } else {
+        btn.textContent = '复制失败';
+        setTimeout(function() { btn.textContent = originalLabel; }, 2500);
+      }
+    }
+
+    function showError(box, msg) {
+      box.innerHTML = '<div class="status danger"><span class="status-dot"></span>' + esc(msg) + '</div>';
+    }
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+      });
+    }
+
+    // 回车提交
+    document.getElementById('inp-get').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); reqGet(); }
+    });
+    // 启动时探测验证码配置
+    window.addEventListener('resize', function() {
+      const out = document.getElementById('out-get');
+      if (out && _lastGetData) paintGet(out);
+    });
+    initCaptcha();
+  </script>
+</body>
+</html>

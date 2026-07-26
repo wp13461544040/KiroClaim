@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: true
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build release archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME}"
+          mkdir -p dist
+
+          build_binary() {
+            local goos="$1"
+            local goarch="$2"
+            local ext="$3"
+            local dir="KiroClaim_${VERSION}_${goos}_${goarch}"
+            mkdir -p "dist/${dir}"
+            CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" go build -trimpath -ldflags="-s -w -X github.com/huey1in/KiroClaim/utils.AppVersion=${VERSION}" -o "dist/${dir}/kiroclaim${ext}" .
+            cp README.md .env.example "dist/${dir}/"
+            cp -R static "dist/${dir}/static"
+            if [ "${goos}" = "windows" ]; then
+              (cd dist && python3 -m zipfile -c "${dir}.zip" "${dir}")
+            else
+              tar -czf "dist/${dir}.tar.gz" -C dist "${dir}"
+            fi
+            rm -rf "dist/${dir}"
+          }
+
+          build_binary linux amd64 ""
+          build_binary linux arm64 ""
+          build_binary windows amd64 ".exe"
+
+          mkdir -p "dist/KiroClaim_${VERSION}_docker"
+          sed "s|ghcr.io/huey1in/kiroclaim:latest|ghcr.io/huey1in/kiroclaim:${VERSION}|g" docker-compose.yml > "dist/KiroClaim_${VERSION}_docker/docker-compose.yml"
+          cp .env.example README.md "dist/KiroClaim_${VERSION}_docker/"
+          (cd dist && python3 -m zipfile -c "KiroClaim_${VERSION}_docker.zip" "KiroClaim_${VERSION}_docker")
+          rm -rf "dist/KiroClaim_${VERSION}_docker"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/*.tar.gz
+            dist/*.zip

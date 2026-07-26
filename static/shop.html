@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>KiroClaim 在线购买</title>
+  <link rel="icon" href="/static/favicon.svg"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.7.2/css/all.min.css"><link rel="stylesheet" href="/static/css/main.css?v=0.2.1-beta"><link rel="stylesheet" href="/static/css/shop.css?v=0.2.1-beta"><link rel="stylesheet" href="/static/css/shop-fixes.css?v=0.2.1-beta">
+</head>
+<body class="shop-page">
+  <header class="shop-header"><a class="brand" href="/"><img src="/static/apple-touch-icon.png" alt=""><span>KiroClaim</span></a><nav><button class="nav-btn active" data-view="buy">购买卡密</button><button class="nav-btn" data-view="query">查询订单</button><a href="/redeem">兑换中心</a></nav></header>
+  <main class="shop-main">
+    <section id="buyView" class="view active">
+      <div class="page-heading"><h1>在线购买卡密</h1><p>选择商品和支付方式，付款完成后在订单页领取卡密。</p></div>
+      <div id="catalogState" class="state">正在加载商品...</div>
+      <div id="productGrid" class="product-grid"></div>
+      <section id="checkout" class="checkout" hidden>
+        <div class="checkout-main"><div id="selectedProduct" class="selected-product"></div><div class="quantity-field"><label for="quantity">购买数量</label><div class="quantity-control"><button type="button" id="decreaseQuantity" class="quantity-stepper" aria-label="减少数量" title="减少数量"><i class="fa-solid fa-minus" aria-hidden="true"></i></button><input id="quantity" type="number" min="1" value="1" inputmode="numeric"><button type="button" id="increaseQuantity" class="quantity-stepper" aria-label="增加数量" title="增加数量"><i class="fa-solid fa-plus" aria-hidden="true"></i></button></div><small id="stockHint" class="stock-hint"></small></div><label>联系方式或邮箱<input id="contact" type="text" placeholder="用于订单查询与通知"></label><label>查询订单密码<input id="checkoutQueryPassword" type="password" minlength="6" maxlength="72" autocomplete="new-password" placeholder="用于查询订单，至少 6 位" required></label><div><span class="field-label">支付方式</span><div id="channelList" class="channel-list"></div></div></div>
+        <aside class="order-summary"><div><span>应付金额</span><strong id="checkoutAmount">-</strong></div><button id="createOrderBtn">创建订单</button><p>创建订单后会生成订单号，请牢记填写的查询订单密码。</p></aside>
+      </section>
+      <section id="paymentResult" class="payment-result" hidden></section>
+    </section>
+    <section id="queryView" class="view">
+      <div class="page-heading"><h1>查询订单</h1><p>输入创建订单时获得的订单号和查询密码。</p></div>
+      <form id="queryForm" class="query-form"><label>订单号<input id="queryOrderNo" required></label><label>查询密码<input id="queryPassword" type="password" required></label><button>查询</button></form>
+      <div id="queryResult"></div>
+    </section>
+  </main>
+  <script src="/static/js/shop.js?v=0.2.1-beta"></script>
+</body></html>

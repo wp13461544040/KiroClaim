@@ -1,0 +1,46 @@
+name: kiroclaim
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: kiroclaim-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-kiroclaim_root_change_me}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-kiroclaim}
+      MYSQL_USER: ${MYSQL_USER:-kiroclaim}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-kiroclaim_change_me}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  kiroclaim:
+    image: ghcr.io/huey1in/kiroclaim:latest
+    container_name: kiroclaim
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "${PORT:-9527}:9527"
+    environment:
+      GIN_MODE: release
+      PORT: 9527
+      DB_TYPE: mysql
+      DB_DSN: "${MYSQL_USER:-kiroclaim}:${MYSQL_PASSWORD:-kiroclaim_change_me}@tcp(mysql:3306)/${MYSQL_DATABASE:-kiroclaim}?charset=utf8mb4&parseTime=True&loc=Local"
+    volumes:
+      - kiroclaim-logs:/app/logs
+      - ./docker-compose.yml:/app/docker-compose.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  mysql-data:
+  kiroclaim-logs:

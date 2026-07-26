@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>KiroClaim 初始化管理员</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="alternate icon" href="/static/favicon.ico">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="manifest" href="/static/site.webmanifest">
+  <link rel="stylesheet" href="/static/css/main.css">
+  <link rel="stylesheet" href="/static/css/responsive.css">
+</head>
+<body>
+  <div id="setupPage" class="login-page setup-page">
+    <div class="login-wrap setup-wrap">
+      <div class="login-card setup-card">
+        <div class="setup-title-row">
+          <div>
+            <h1 class="login-title setup-title">系统初始化</h1>
+            <div class="setup-subtitle">完成管理员创建和本地环境检测</div>
+          </div>
+          <div class="setup-state-pill" id="setupStatePill">未完成</div>
+        </div>
+
+        <div class="setup-steps">
+          <div class="setup-step active" id="stepAdmin">
+            <span>1</span>
+            <div>
+              <strong>管理员账号</strong>
+              <small>创建首个后台用户</small>
+            </div>
+          </div>
+          <div class="setup-step" id="stepEnv">
+            <span>2</span>
+            <div>
+              <strong>环境检测</strong>
+              <small>确认本地配置可用</small>
+            </div>
+          </div>
+        </div>
+
+        <section class="setup-panel active" id="adminStepPanel">
+          <div class="setup-panel-head">
+            <div>
+              <h2>创建管理员账号</h2>
+              <p>账号会写入本地数据库，密码只保存 bcrypt 哈希。</p>
+            </div>
+          </div>
+          <div class="login-field">
+            <label for="setupUsernameInput">用户名</label>
+            <input type="text" id="setupUsernameInput" class="login-input" placeholder="请输入管理员用户名" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false">
+          </div>
+          <div class="login-field">
+            <label for="setupPasswordInput">密码</label>
+            <input type="password" id="setupPasswordInput" class="login-input" placeholder="至少 8 个字符" autocomplete="new-password">
+          </div>
+          <div class="login-field">
+            <label for="setupPasswordConfirmInput">确认密码</label>
+            <input type="password" id="setupPasswordConfirmInput" class="login-input" placeholder="再次输入密码" autocomplete="new-password">
+          </div>
+          <div id="setupError" class="login-error"></div>
+          <div class="setup-actions">
+            <button type="button" id="nextSetupBtn" class="login-btn">下一步</button>
+          </div>
+        </section>
+
+        <section class="setup-panel" id="envStepPanel" hidden>
+          <div class="setup-panel-head">
+            <div>
+              <h2>本地环境检测</h2>
+              <p>检测通过后才能完成初始化。</p>
+            </div>
+            <button type="button" id="setupCheckBtn" class="setup-check-btn">重新检测</button>
+          </div>
+
+          <div id="setupChecksBody" class="setup-checks-body">
+            <section class="setup-check-panel pending">
+              <div class="setup-check-panel-head">
+                <div class="setup-check-panel-title">
+                  <span class="setup-check-panel-icon">
+                    <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="6" rx="2"></rect><rect x="4" y="13" width="16" height="6" rx="2"></rect><path d="M8 8h.01M8 16h.01M12 8h4M12 16h4"></path></svg>
+                  </span>
+                  <div><strong>等待检测</strong><small>进入此步骤后会自动开始检测</small></div>
+                </div>
+                <span class="setup-check-summary">未检测</span>
+              </div>
+            </section>
+          </div>
+
+          <div id="setupEnvError" class="login-error setup-env-error"></div>
+          <div class="setup-actions split">
+            <button type="button" id="backSetupBtn" class="setup-icon-btn" aria-label="返回上一步" title="返回上一步">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M15 18l-6-6 6-6"></path>
+              </svg>
+            </button>
+            <button type="button" id="setupBtn" class="login-btn" disabled>创建并进入后台</button>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+  <script src="/static/js/setup.js?v=0.2.1-beta"></script>
+</body>
+</html>

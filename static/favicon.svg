@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" shape-rendering="crispEdges">
+  <title>KiroClaim favicon</title>
+  <path d="M7 8H29V16H26V20H29V26H7V20H10V16H7Z" fill="#d4d4d8"/>
+  <path d="M5 6H27V14H24V18H27V24H5V18H8V14H5Z" fill="#18181b"/>
+  <path d="M7 8H25V13H22V19H25V22H7V19H10V13H7Z" fill="#ffffff"/>
+  <rect x="8" y="13" width="1" height="1" fill="#18181b"/>
+  <rect x="8" y="18" width="1" height="1" fill="#18181b"/>
+  <rect x="23" y="13" width="1" height="1" fill="#18181b"/>
+  <rect x="23" y="18" width="1" height="1" fill="#18181b"/>
+  <rect x="10" y="10" width="1" height="2" fill="#a1a1aa"/>
+  <rect x="10" y="14" width="1" height="2" fill="#a1a1aa"/>
+  <rect x="10" y="18" width="1" height="2" fill="#a1a1aa"/>
+  <rect x="20" y="10" width="3" height="3" fill="#facc15"/>
+  <rect x="21" y="9" width="1" height="1" fill="#fde68a"/>
+  <rect x="13" y="11" width="5" height="2" fill="#38bdf8"/>
+  <rect x="13" y="15" width="2" height="2" fill="#22c55e"/>
+  <rect x="15" y="17" width="2" height="2" fill="#22c55e"/>
+  <rect x="17" y="16" width="2" height="2" fill="#22c55e"/>
+  <rect x="19" y="14" width="2" height="2" fill="#22c55e"/>
+  <rect x="21" y="12" width="2" height="2" fill="#22c55e"/>
+</svg>

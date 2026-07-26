@@ -1,0 +1,39 @@
+# Local configuration
+.env
+.env.local
+.env.*.local
+
+# Runtime data
+data/
+logs/
+*.log
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+server.out.log
+server.err.log
+
+# Backup files
+*.backup
+*.backup.*
+app.db.backup*
+backup-*/
+
+# Build outputs
+dist/
+release/
+*.tar.gz
+*.zip
+kiroclaim
+kiroclaim.exe
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

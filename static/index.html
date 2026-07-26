@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>KiroClaim 管理后台</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="alternate icon" href="/static/favicon.ico">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="manifest" href="/static/site.webmanifest">
+  <link rel="stylesheet" href="/static/css/main.css?v=0.2.1-beta">
+  <link rel="stylesheet" href="/static/css/responsive.css">
+</head>
+<body>
+
+  <!-- 登录页 -->
+  <div id="loginPage" class="login-page" style="display:none">
+    <div class="login-wrap">
+      <div class="login-card">
+        <h1 class="login-title">登录</h1>
+        <div class="login-field">
+          <label for="loginUsernameInput">用户名</label>
+          <input type="text" id="loginUsernameInput" class="login-input" placeholder="请输入用户名" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" onkeypress="if(event.key==='Enter')document.getElementById('loginPasswordInput').focus()">
+        </div>
+        <div class="login-field">
+          <label for="loginPasswordInput">密码</label>
+          <input type="password" id="loginPasswordInput" class="login-input" placeholder="请输入密码" autocomplete="current-password" onkeypress="if(event.key==='Enter')doLogin()">
+        </div>
+        <div id="loginError" class="login-error"></div>
+        <button type="button" id="loginBtn" class="login-btn" onclick="doLogin()">登 录</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+  <div class="app-container" id="appContainer" style="display:none">
+    <!-- 侧边栏 -->
+    <aside class="sidebar" id="sidebar">
+      <div role="button" tabindex="0" class="sidebar-version" id="sidebarVersion" onclick="showVersionPanel()" onkeydown="handleVersionKeydown(event)" title="查看版本">
+        <span class="version-dot" aria-hidden="true"></span>
+        <span class="version-label" id="sidebarVersionText">检测中</span>
+        <span class="version-new" id="sidebarVersionNew" hidden>NEW</span>
+      </div>
+      <div class="sidebar-tools">
+        <button type="button" class="sidebar-collapse-toggle" id="sidebarCollapseToggle" onclick="toggleSidebarCollapse()" aria-label="收起侧边栏" title="收起侧边栏">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>
+        </button>
+      </div>
+      <nav class="nav-group">
+        <div class="nav-item" data-tab="dashboard" title="概览" onclick="switchTab('dashboard', this)"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg></span><span class="nav-label">概览</span></div>
+        <div class="nav-item" data-tab="accounts" title="账号池" onclick="switchTab('accounts', this)"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></span><span class="nav-label">账号池</span></div>
+        <div class="nav-item" data-tab="assigned" title="已分配" onclick="switchTab('assigned', this)"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M16 11l2 2 4-4"></path></svg></span><span class="nav-label">已分配</span></div>
+        <div class="nav-item" data-tab="cards" title="卡密管理" onclick="switchTab('cards', this)"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path><path d="M13 5v2"></path><path d="M13 17v2"></path><path d="M13 11v2"></path></svg></span><span class="nav-label">卡密管理</span></div>
+        <div class="nav-item" data-tab="logs" title="操作日志" onclick="switchTab('logs', this)"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg></span><span class="nav-label">操作日志</span></div>
+        <div class="nav-item" data-tab="commerce-orders" title="商城订单" onclick="openCommerceTab('commerce-orders', this)"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h12v18H6z"></path><path d="M9 7h6M9 11h6M9 15h4"></path></svg></span><span class="nav-label">商城订单</span></div>
+        <div class="nav-item" data-tab="settings" title="系统设置" onclick="switchTab('settings', this)"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5z"></path><path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.08 1.65V21a2 2 0 0 1-4 0v-.09A1.8 1.8 0 0 0 8.8 19.26a1.8 1.8 0 0 0-1.98.36l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.8 1.8 0 0 0 4.35 15a1.8 1.8 0 0 0-1.65-1.08H2.6a2 2 0 0 1 0-4h.09A1.8 1.8 0 0 0 4.35 8a1.8 1.8 0 0 0-.36-1.98l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.8 1.8 0 0 0 8.8 3.55 1.8 1.8 0 0 0 9.88 1.9V1.8a2 2 0 0 1 4 0v.09a1.8 1.8 0 0 0 1.08 1.65 1.8 1.8 0 0 0 1.98-.36l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.8 1.8 0 0 0 19.4 8c.17.63.66 1.08 1.25 1.08h.75a2 2 0 0 1 0 4h-.75A1.8 1.8 0 0 0 19.4 15z"></path></svg></span><span class="nav-label">系统设置</span></div>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="nav-item" onclick="logout()" title="退出登录"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="M16 17l5-5-5-5"></path><path d="M21 12H9"></path></svg></span><span class="nav-label">退出登录</span></div>
+      </div>
+    </aside>
+
+    <!-- 主体内容 -->
+    <div class="main-wrapper">
+      <header class="header-bar">
+        <div style="display:flex;align-items:center;gap:12px">
+          <button class="sidebar-toggle" onclick="toggleSidebar()" aria-label="菜单">
+            <span></span><span></span><span></span>
+          </button>
+          <div class="view-title" id="pageTitle">概览</div>
+        </div>
+      </header>
+
+      <!-- 概览面板 -->
+      <div class="tab-panel" id="tab-dashboard">
+        <div class="stat-row">
+          <div class="stat-item">
+            <div class="stat-label">总账号</div>
+            <div class="stat-number" id="statAccTotal">-</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">可用账号</div>
+            <div class="stat-number" id="statAccUnused">-</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">卡密库存</div>
+            <div class="stat-number" id="statCardUnused">-</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">今日激活</div>
+            <div class="stat-number" id="statTodayActivate">-</div>
+          </div>
+        </div>
+
+        <!-- 账号状态图表 -->
+        <div class="k-card" style="margin-top:24px">
+          <div class="k-card-header">
+            <span class="k-card-title">账号状态</span>
+          </div>
+          <div class="k-card-body">
+            <div id="accountStatusChart" class="dashboard-chart"></div>
+            <div class="cute-summary-grid">
+              <div class="cute-legend-item" style="--chart-color:#34d399;--chart-soft:#ecfdf5"><span class="cute-dot"></span><span class="cute-legend-label">正常</span><span class="cute-legend-value" id="statActive">-</span></div>
+              <div class="cute-legend-item" style="--chart-color:#fb7185;--chart-soft:#fff1f2"><span class="cute-dot"></span><span class="cute-legend-label">已封禁</span><span class="cute-legend-value" id="statSuspended">-</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 最近活动 -->
+        <div class="k-card" style="margin-top:24px">
+          <div class="k-card-header">
+            <span class="k-card-title">最近活动</span>
+          </div>
+          <div class="k-card-body" style="padding:0">
+            <table>
+              <thead>
+                <tr>
+                  <th>操作</th>
+                  <th>详情</th>
+                  <th>时间</th>
+                </tr>
+              </thead>
+              <tbody id="recentActivityBody">
+                <tr><td colspan="3" style="text-align:center;color:#999;padding:24px">加载中...</td></tr>
+              </tbody>
+            </table>
+            <div class="pagination recent-pagination" id="recentActivityPagination"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 账号池面板 -->
+      <div class="tab-panel" id="tab-accounts">
+        <div class="k-card">
+          <div class="k-card-header">
+            <span class="k-card-title">账号资源列表</span>
+            <div style="display:flex; gap:8px">
+              <div class="k-dropdown" id="exportAccountDropdown">
+                <div class="k-dropdown-trigger ui-btn ui-btn-secondary ui-btn-sm" onclick="toggleDropdown('exportAccountDropdown')" style="min-width:auto">导出</div>
+                <div class="k-dropdown-menu" style="min-width:120px">
+                  <div class="k-dropdown-item" onclick="exportAccounts('json')">JSON (完整格式)</div>
+                  <div class="k-dropdown-item" onclick="exportAccounts('csv')">CSV</div>
+                  <div class="k-dropdown-item" onclick="exportAccounts('xlsx')">XLSX</div>
+                </div>
+              </div>
+              <button class="ui-btn ui-btn-danger ui-btn-sm" id="batchDeleteAccountsBtn" style="display:none" onclick="batchDeleteAccounts()">批量删除 (<span id="selectedAccountCount">0</span>)</button>
+              <button class="ui-btn ui-btn-danger ui-btn-sm" onclick="deleteBannedAccounts()">清理封禁账号</button>
+              <button class="ui-btn ui-btn-primary ui-btn-sm" onclick="showImportModal()">导入账号</button>
+              <button class="ui-btn ui-btn-danger ui-btn-sm" onclick="doClearAllAccounts()">一键清空</button>
+            </div>
+          </div>
+          <div class="k-card-body">
+            <!-- 筛选栏 -->
+            <div style="display:flex; gap:12px; margin-bottom:20px; align-items:center; flex-wrap:wrap">
+              <input class="k-input" type="text" id="accountKeyword" placeholder="搜索邮箱..." style="width:200px" onkeypress="if(event.key==='Enter')loadAccounts(1)">
+              <input class="k-input" type="date" id="accountCreatedFrom" style="width:140px" title="创建时间起" onchange="loadAccounts(1)">
+              <span style="color:#999;font-size:12px">至</span>
+              <input class="k-input" type="date" id="accountCreatedTo" style="width:140px" title="创建时间止" onchange="loadAccounts(1)">
+              <div class="k-dropdown" id="accountStatusDropdown">
+                <div class="k-dropdown-trigger" onclick="toggleDropdown('accountStatusDropdown')">
+                  <span id="accountStatusText">全部状态</span>
+                </div>
+                <div class="k-dropdown-menu">
+                  <div class="k-dropdown-item selected" onclick="selectAccountStatus('', '全部状态')">全部状态</div>
+                  <div class="k-dropdown-item" onclick="selectAccountStatus('active', '正常')">正常</div>
+                  <div class="k-dropdown-item" onclick="selectAccountStatus('suspended', '已封禁')">已封禁</div>
+                </div>
+              </div>
+              <div class="k-dropdown" id="accountSubscriptionDropdown">
+                <div class="k-dropdown-trigger" onclick="toggleDropdown('accountSubscriptionDropdown')">
+                  <span id="accountSubscriptionText">全部订阅</span>
+                </div>
+                <div class="k-dropdown-menu">
+                  <div class="k-dropdown-item selected" onclick="selectAccountSubscription('', '全部订阅')">全部订阅</div>
+                </div>
+              </div>
+              <button class="ui-btn ui-btn-secondary ui-btn-sm" onclick="resetAccountFilters()">重置</button>
+            </div>
+            <div class="account-table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width:40px"><input type="checkbox" class="k-checkbox" id="selectAllAccounts" onchange="toggleSelectAllAccounts(this.checked)"></th>
+                    <th>ID</th>
+                    <th>邮箱地址</th>
+                    <th>健康状态</th>
+                    <th>订阅</th>
+                    <th>额度用量</th>
+                    <th>最后检查</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="accountsBody"></tbody>
+              </table>
+            </div>
+            <div class="pagination" id="accountsPagination"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 已分配账号面板 -->
+      <div class="tab-panel" id="tab-assigned">
+        <div class="k-card">
+          <div class="k-card-header">
+            <span class="k-card-title">已分配账号</span>
+            <div style="display:flex; gap:8px">
+              <button class="ui-btn ui-btn-danger ui-btn-sm" onclick="doClearAssignedAccounts()">一键清空</button>
+            </div>
+          </div>
+          <div class="k-card-body">
+            <!-- 筛选栏 -->
+            <div style="display:flex; gap:12px; margin-bottom:20px; align-items:center; flex-wrap:wrap">
+              <input class="k-input" type="text" id="assignedKeyword" placeholder="搜索邮箱..." style="width:200px" onkeypress="if(event.key==='Enter')loadAssignedAccounts(1)">
+              <div class="k-dropdown" id="assignedStatusDropdown">
+                <div class="k-dropdown-trigger" onclick="toggleDropdown('assignedStatusDropdown')">
+                  <span id="assignedStatusText">全部状态</span>
+                </div>
+                <div class="k-dropdown-menu">
+                  <div class="k-dropdown-item selected" onclick="selectAssignedStatus('', '全部状态')">全部状态</div>
+                  <div class="k-dropdown-item" onclick="selectAssignedStatus('active', '正常')">正常</div>
+                  <div class="k-dropdown-item" onclick="selectAssignedStatus('suspended', '已封禁')">已封禁</div>
+                </div>
+              </div>
+              <button class="ui-btn ui-btn-secondary ui-btn-sm" onclick="resetAssignedFilters()">重置</button>
+            </div>
+            <div class="account-table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>邮箱地址</th>
+                    <th>健康状态</th>
+                    <th>订阅</th>
+                    <th>额度用量</th>
+                    <th>分配时间</th>
+                    <th>最后检查</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="assignedBody"></tbody>
+              </table>
+            </div>
+            <div class="pagination" id="assignedPagination"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 卡密面板 -->
+      <div class="tab-panel" id="tab-cards">
+        <div class="k-card">
+          <div class="k-card-header">
+            <span class="k-card-title">卡密列表管理</span>
+            <div style="display:flex; gap:8px">
+              <div class="k-dropdown" id="exportCardDropdown">
+                <div class="k-dropdown-trigger ui-btn ui-btn-secondary ui-btn-sm" onclick="toggleDropdown('exportCardDropdown')" style="min-width:auto">导出</div>
+                <div class="k-dropdown-menu" style="min-width:120px">
+                  <div class="k-dropdown-item" onclick="exportCards('txt')">TXT</div>
+                  <div class="k-dropdown-item" onclick="exportCards('csv')">CSV</div>
+                  <div class="k-dropdown-item" onclick="exportCards('xlsx')">XLSX</div>
+                </div>
+              </div>
+              <button class="ui-btn ui-btn-danger ui-btn-sm" id="batchDeleteCardsBtn" style="display:none" onclick="batchDeleteCards()">批量删除 (<span id="selectedCardCount">0</span>)</button>
+              <button class="ui-btn ui-btn-primary ui-btn-sm" onclick="showGenerateModal()">生成卡密</button>
+            </div>
+          </div>
+          <div class="k-card-body">
+            <!-- 筛选栏 -->
+            <div style="display:flex; gap:12px; margin-bottom:20px; align-items:center; flex-wrap:wrap">
+              <input class="k-input" type="text" id="cardKeyword" placeholder="搜索序列号..." style="width:200px" onkeypress="if(event.key==='Enter')loadCards(1)">
+              <input class="k-input" type="date" id="cardCreatedFrom" style="width:130px" title="创建时间起" onchange="loadCards(1)">
+              <span style="color:#999;font-size:12px">至</span>
+              <input class="k-input" type="date" id="cardCreatedTo" style="width:130px" title="创建时间止" onchange="loadCards(1)">
+              <div class="k-dropdown" id="cardFilterDropdown">
+                <div class="k-dropdown-trigger" onclick="toggleDropdown('cardFilterDropdown')">
+                  <span id="cardFilterText">全部状态</span>
+                </div>
+                <div class="k-dropdown-menu">
+                  <div class="k-dropdown-item selected" onclick="selectCardFilter('', '全部状态', this)">全部状态</div>
+                  <div class="k-dropdown-item" onclick="selectCardFilter('unused', '未使用', this)">未使用</div>
+                  <div class="k-dropdown-item" onclick="selectCardFilter('active', '使用中', this)">使用中</div>
+                </div>
+              </div>
+              <div class="k-dropdown" id="cardSubscriptionDropdown">
+                <div class="k-dropdown-trigger" onclick="toggleDropdown('cardSubscriptionDropdown')"><span id="cardSubscriptionText">全部订阅</span></div>
+                <div class="k-dropdown-menu"><div class="k-dropdown-item selected" onclick="selectCardSubscription('', '全部订阅', this)">全部订阅</div></div>
+              </div>
+              <div class="k-dropdown" id="cardShopStatusDropdown">
+                <div class="k-dropdown-trigger" onclick="toggleDropdown('cardShopStatusDropdown')"><span id="cardShopStatusText">全部商城状态</span></div>
+                <div class="k-dropdown-menu">
+                  <div class="k-dropdown-item selected" onclick="selectCardShopStatus('', '全部商城状态', this)">全部商城状态</div>
+                  <div class="k-dropdown-item" onclick="selectCardShopStatus('listed', '已上架', this)">已上架</div>
+                  <div class="k-dropdown-item" onclick="selectCardShopStatus('unlisted', '未上架', this)">未上架</div>
+                </div>
+              </div>
+              <div class="k-dropdown" id="cardShopGroupDropdown">
+                <div class="k-dropdown-trigger" onclick="toggleDropdown('cardShopGroupDropdown')"><span id="cardShopGroupText">全部售价档位</span></div>
+                <div class="k-dropdown-menu"><div class="k-dropdown-item selected" onclick="selectCardShopGroup('', '全部售价档位', this)">全部售价档位</div></div>
+              </div>
+              <button class="ui-btn ui-btn-danger ui-btn-sm" id="delistShopGroupBtn" style="display:none" onclick="delistSelectedShopGroup()">下架该售价并删除库存</button>
+              <button class="ui-btn ui-btn-secondary ui-btn-sm" onclick="resetCardFilters()">重置</button>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:40px"><input type="checkbox" class="k-checkbox" id="selectAllCards" onchange="toggleSelectAllCards(this.checked)"></th>
+                  <th>ID</th>
+                  <th>序列号</th>
+                  <th>账号订阅</th>
+                  <th>状态</th>
+                  <th>商城</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="cardsBody"></tbody>
+            </table>
+            <div class="pagination" id="cardsPagination"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 操作日志面板 -->
+      <div class="tab-panel" id="tab-logs">
+        <div class="k-card">
+          <div class="k-card-header">
+            <span class="k-card-title">操作日志</span>
+          </div>
+          <div class="k-card-body">
+            <div style="display:flex; gap:12px; margin-bottom:20px; align-items:center">
+              <div class="k-dropdown" id="logActionDropdown">
+                <div class="k-dropdown-trigger" onclick="toggleDropdown('logActionDropdown')">
+                  <span id="logActionText">全部操作</span>
+                </div>
+                <div class="k-dropdown-menu">
+                  <div class="k-dropdown-item selected" onclick="selectLogAction('', '全部操作')">全部操作</div>
+                  <div class="k-dropdown-item" onclick="selectLogAction('import', '导入')">导入</div>
+                  <div class="k-dropdown-item" onclick="selectLogAction('delete', '删除')">删除</div>
+                  <div class="k-dropdown-item" onclick="selectLogAction('generate', '生成卡密')">生成卡密</div>
+                  <div class="k-dropdown-item" onclick="selectLogAction('activate', '激活')">激活</div>
+                  <div class="k-dropdown-item" onclick="selectLogAction('refresh', '刷新')">刷新</div>
+                  <div class="k-dropdown-item" onclick="selectLogAction('export', '导出')">导出</div>
+                </div>
+              </div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>操作类型</th>
+                  <th>详情</th>
+                  <th>操作者</th>
+                  <th>客户端 IP</th>
+                  <th>时间</th>
+                </tr>
+              </thead>
+              <tbody id="logsBody"></tbody>
+            </table>
+            <div class="pagination" id="logsPagination"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="tab-commerce-orders"><div id="commerceOrdersMount"><div class="k-card"><div class="k-card-body">正在加载商城订单...</div></div></div></div>
+
+      <!-- 系统设置面板 -->
+      <div class="tab-panel" id="tab-settings">
+        <div class="k-card">
+          <div class="k-card-header">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="k-card-title">系统设置</span><span style="color:var(--text-muted)">/</span><button type="button" data-settings-category="base" onclick="switchSettingsCategory('base')" style="border:0;background:none;padding:0;color:var(--text-main);font:inherit;font-size:13px;cursor:pointer">基础与安全</button><span style="color:var(--text-muted)">/</span><button type="button" data-settings-category="logging" onclick="switchSettingsCategory('logging')" style="border:0;background:none;padding:0;color:var(--text-muted);font:inherit;font-size:13px;cursor:pointer">日志与更新</button><span style="color:var(--text-muted)">/</span><button type="button" data-settings-category="commerce" onclick="switchSettingsCategory('commerce')" style="border:0;background:none;padding:0;color:var(--text-muted);font:inherit;font-size:13px;cursor:pointer">商城与支付</button><span style="color:var(--text-muted)">/</span><button type="button" data-settings-category="delivery" onclick="switchSettingsCategory('delivery')" style="border:0;background:none;padding:0;color:var(--text-muted);font:inherit;font-size:13px;cursor:pointer">存储与通知</button></div>
+            <button id="settingsSaveBtn" class="ui-btn ui-btn-primary ui-btn-sm" onclick="saveCurrentSettingsCategory()">保存配置</button>
+          </div>
+          <div class="k-card-body" id="unifiedSettingsBody">
+            <div class="settings-grid" id="runtimeSettingsSource">
+              <div class="settings-column">
+                <div class="settings-toggle-card">
+                  <div>
+                    <strong>接口限流</strong>
+                    <small>限制兑换与客户端接口的请求频率</small>
+                  </div>
+                  <input type="checkbox" class="k-checkbox" id="settingRateLimitEnabled">
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label" for="settingRateLimitPerMin">每分钟请求数</label>
+                  <input class="k-input" type="number" id="settingRateLimitPerMin" min="1" value="30">
+                  <div class="settings-help"></div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label" for="settingMinResponseMs">最小响应延迟（毫秒）</label>
+                  <input class="k-input" type="number" id="settingMinResponseMs" min="0" value="150">
+                  <div class="settings-help"></div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label" for="settingMaxUpstreamCheckConcurrency">上游检查并发数</label>
+                  <input class="k-input" type="number" id="settingMaxUpstreamCheckConcurrency" min="1" value="6">
+                  <div class="settings-help">导入、兑换和后台刷新共用的检查并发池</div>
+                </div>
+                <div class="settings-toggle-card">
+                  <div>
+                    <strong>发货前上游健康检查</strong>
+                    <small>关闭后，发货仅依据数据库中的现有账号状态</small>
+                  </div>
+                  <input type="checkbox" class="k-checkbox" id="settingDispatchHealthCheckEnabled" checked>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label" for="settingRequestTimeoutSeconds">上游请求超时（秒）</label>
+                  <input class="k-input" type="number" id="settingRequestTimeoutSeconds" min="1" value="45">
+                  <div class="settings-help">刷新、用量和模型接口的请求超时</div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label" for="settingLoginFailLimit">登录失败次数</label>
+                  <input class="k-input" type="number" id="settingLoginFailLimit" min="1" value="5">
+                  <div class="settings-help"></div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label" for="settingLoginLockMinutes">锁定分钟</label>
+                  <input class="k-input" type="number" id="settingLoginLockMinutes" min="1" value="15">
+                  <div class="settings-help"></div>
+                </div>
+              </div>
+
+              <div class="settings-column">
+                <div class="settings-toggle-card">
+                  <div>
+                    <strong>提取账号人机验证</strong>
+                    <small>Cloudflare Turnstile</small>
+                  </div>
+                  <input type="checkbox" class="k-checkbox" id="settingCaptchaEnabled">
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label" for="settingCaptchaSiteKey">Site Key</label>
+                  <input class="k-input" type="text" id="settingCaptchaSiteKey" autocomplete="off" spellcheck="false">
+                  <div class="settings-help"></div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label" for="settingCaptchaSecretKey">Secret Key</label>
+                  <input class="k-input" type="password" id="settingCaptchaSecretKey" autocomplete="new-password" placeholder="留空表示不修改">
+                  <div id="settingCaptchaSecretState" class="settings-help"></div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label" for="settingCaptchaFreeCount">验证码宽限次数</label>
+                  <input class="k-input" type="number" id="settingCaptchaFreeCount" min="0" value="0">
+                  <div class="settings-help">填 0 表示每次提取账号都必须完成人机验证</div>
+                </div>
+                <div class="settings-field settings-field-placeholder"></div>
+              </div>
+              <div class="settings-column">
+                <div class="settings-toggle-card">
+                  <div>
+                    <strong>日志文件切片</strong>
+                    <small>控制本地日志文件写入与轮转保留</small>
+                  </div>
+                  <input type="checkbox" class="k-checkbox" id="settingLogFileEnabled">
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label" for="settingLogFilePath">日志文件路径</label>
+                  <input class="k-input" type="text" id="settingLogFilePath" autocomplete="off" spellcheck="false" placeholder="logs/app.log">
+                  <div class="settings-help">相对路径以程序运行目录为基准</div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label" for="settingLogMaxSizeMB">单文件大小（MB）</label>
+                  <input class="k-input" type="number" id="settingLogMaxSizeMB" min="1" value="20">
+                  <div class="settings-help"></div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label" for="settingLogMaxBackups">保留文件数</label>
+                  <input class="k-input" type="number" id="settingLogMaxBackups" min="1" value="7">
+                  <div class="settings-help"></div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label" for="settingLogMaxAgeDays">保留天数</label>
+                  <input class="k-input" type="number" id="settingLogMaxAgeDays" min="1" value="30">
+                  <div class="settings-help"></div>
+                </div>
+                <div class="settings-toggle-card">
+                  <div>
+                    <strong>压缩历史日志</strong>
+                    <small>轮转后的旧日志使用 gzip 压缩</small>
+                  </div>
+                  <input type="checkbox" class="k-checkbox" id="settingLogCompress">
+                </div>
+                <div class="settings-toggle-card">
+                  <div>
+                    <strong>系统自动更新</strong>
+                    <small>检测到新 Docker 版本后自动拉取并重建容器</small>
+                  </div>
+                  <input type="checkbox" class="k-checkbox" id="settingAutoUpdateEnabled">
+                </div>
+              </div>
+            </div>
+            <div id="settingsResult" style="margin-top:18px"></div>
+          </div>
+        </div>
+        <div id="commerceChannelsMount"></div>
+        <div id="commerceSettingsMount"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 导入账号模态框 -->
+  <div class="modal-overlay" id="importModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="modal-title">导入账号</span>
+        <button type="button" class="modal-close" aria-label="关闭" title="关闭" onclick="closeImportModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="margin-bottom: 20px;">
+          <label style="display:block; margin-bottom: 8px; font-size: 13px; color: var(--text-muted);">JSON 数据源</label>
+          <textarea class="k-input" id="importJson" placeholder="请输入标准 JSON 格式数据"></textarea>
+        </div>
+        <div style="display:flex; gap:12px">
+          <button class="ui-btn ui-btn-primary" onclick="doImport(this)">执行导入</button>
+          <button class="ui-btn ui-btn-secondary" onclick="document.getElementById('importJson').value=''">清空</button>
+          <button class="ui-btn ui-btn-secondary" onclick="closeImportModal()">取消</button>
+        </div>
+        <div id="importResult" style="margin-top:20px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 生成卡密模态框 -->
+  <div class="modal-overlay" id="generateModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="modal-title">生成卡密</span>
+        <button type="button" class="modal-close" aria-label="关闭" title="关闭" onclick="closeGenerateModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+          <div>
+            <label style="display:block; margin-bottom: 8px; font-size:13px">生成数量</label>
+            <input class="k-input" type="number" id="genCount" value="1">
+          </div>
+          <div>
+            <label style="display:block; margin-bottom: 8px; font-size:13px">账号数量</label>
+            <input class="k-input" type="number" id="genAccountCount" value="1" min="1" oninput="updateModeHint()">
+          </div>
+          <div>
+            <label style="display:block; margin-bottom: 8px; font-size:13px">账号订阅</label>
+            <div class="k-dropdown" id="genSubscriptionDropdown" style="width:100%">
+              <div class="k-dropdown-trigger" onclick="toggleDropdown('genSubscriptionDropdown')">
+                <span id="genSubscriptionText">加载订阅...</span>
+              </div>
+              <div class="k-dropdown-menu">
+                <div class="k-dropdown-item disabled">正在加载订阅</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="genModeHint" style="padding:12px; background:#fafafa; border-radius:4px; font-size:13px; color:var(--text-muted); margin-bottom:24px"></div>
+
+        <div class="settings-toggle-card" style="margin-bottom:14px">
+          <div><strong>上架商城</strong><small>生成后直接作为商品可售库存</small></div>
+          <input type="checkbox" class="k-checkbox" id="genListOnShop" onchange="toggleGenerateShopFields()">
+        </div>
+        <div id="genShopFields" hidden style="margin-bottom:24px">
+          <label style="display:block; margin-bottom:8px; font-size:13px">人民币售价（元）</label>
+          <input class="k-input" type="number" id="genShopPrice" value="0.00" min="0" step="0.01" inputmode="decimal">
+          <label style="display:block; margin:16px 0 8px; font-size:13px">商城商品图片</label>
+          <div class="product-image-upload">
+            <input class="k-input" type="file" id="genShopImage" accept="image/png,image/jpeg,image/webp" onchange="handleGenerateShopImage(this)">
+            <button type="button" class="ui-btn ui-btn-secondary ui-btn-sm" id="clearGenShopImageBtn" hidden onclick="clearGenerateShopImage()">移除图片</button>
+          </div>
+          <img id="genShopImagePreview" class="product-image-preview" alt="商城商品图片预览" hidden>
+          <small class="product-image-help">支持 PNG、JPEG、WebP，最大 2 MB</small>
+        </div>
+
+        <div style="display:flex; gap:12px">
+          <button class="ui-btn ui-btn-primary" onclick="doGenerate()">立即生成</button>
+          <button class="ui-btn ui-btn-secondary" onclick="closeGenerateModal()">取消</button>
+        </div>
+
+        <div id="generateResult" style="margin-top:24px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 页面脚本 -->
+  <script src="/static/js/ui.js"></script>
+  <script src="/static/js/auth.js"></script>
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/dashboard.js"></script>
+  <script src="/static/js/accounts.js"></script>
+  <script src="/static/js/cards.js?v=0.2.1-beta"></script>
+  <script src="/static/js/export.js"></script>
+  <script src="/static/js/logs.js"></script>
+  <script src="/static/js/settings.js"></script>
+  <script src="/static/js/commerce-admin-loader.js"></script>
+  <script src="/static/js/version.js"></script>
+  <script src="/static/js/main.js"></script>
+</body>
+</html>

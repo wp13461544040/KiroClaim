@@ -1,0 +1,689 @@
+/* ≤1024px：收起侧边栏，切到移动端形态 */
+@media (max-width: 1024px) {
+    .sidebar {
+        transform: translateX(-100%);
+        transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        width: 260px;
+        border-right: none;
+    }
+
+    .sidebar-tools {
+        display: none;
+    }
+
+    .app-container.sidebar-collapsed .sidebar {
+        width: 260px;
+    }
+
+    .app-container.sidebar-collapsed .main-wrapper {
+        margin-left: 0;
+    }
+
+    .app-container.sidebar-collapsed .nav-group,
+    .app-container.sidebar-collapsed .sidebar-footer {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+
+    .app-container.sidebar-collapsed .nav-item {
+        justify-content: flex-start;
+        gap: 10px;
+        padding-left: 14px;
+        padding-right: 14px;
+    }
+
+    .app-container.sidebar-collapsed .nav-label {
+        max-width: 160px;
+        opacity: 1;
+    }
+
+    /* 注意：ui.js toggleSidebar 用的是 .open */
+    .sidebar.open {
+        transform: translateX(0);
+        box-shadow: 20px 0 50px rgba(0, 0, 0, 0.08);
+    }
+
+    .main-wrapper {
+        margin-left: 0;
+        padding: 16px 20px 32px;
+    }
+
+    .sidebar-toggle {
+        display: inline-flex;
+    }
+
+    .view-title {
+        font-size: 20px;
+    }
+}
+
+/* ≤640px：卡片/统计再紧凑一级 */
+@media (max-width: 640px) {
+    .main-wrapper {
+        padding: 14px 16px 28px;
+    }
+
+    .stat-row {
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+
+    .stat-item {
+        padding: 14px 16px;
+    }
+
+    .stat-number {
+        font-size: 20px;
+    }
+
+    .dashboard-chart {
+        height: auto;
+        min-height: 220px;
+    }
+
+    .cute-status-chart {
+        grid-template-columns: 1fr;
+        gap: 14px;
+        min-height: 360px;
+    }
+
+    .cute-stat-pill {
+        max-width: none;
+    }
+
+    .cute-donut {
+        order: -1;
+    }
+
+    .cute-summary-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .settings-grid {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+
+    .k-card-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 16px 18px;
+    }
+
+    .k-card-body {
+        padding: 18px;
+        overflow-x: visible;
+    }
+
+    table { min-width: 0; }
+
+    .modal-overlay { padding: 16px; }
+    .modal-content { max-height: calc(100vh - 32px); }
+    .modal-body { padding: 18px; }
+}
+
+/* ≤480px：登录页内边距收紧 */
+@media (max-width: 480px) {
+    .login-page {
+        padding: max(16px, env(safe-area-inset-top))
+                 max(16px, env(safe-area-inset-right))
+                 max(16px, env(safe-area-inset-bottom))
+                 max(16px, env(safe-area-inset-left));
+    }
+    .login-card {
+        padding: 28px 22px 24px;
+    }
+    .login-input {
+        height: 44px;
+        font-size: 16px; /* ≥16px 防止 iOS 聚焦时自动缩放 */
+    }
+    .login-btn {
+        height: 44px;
+    }
+}
+
+@media (max-width: 640px) {
+
+    /* 顶栏按钮在窄屏下自然换行并自适应 */
+    #tab-accounts .k-card-header > div,
+    #tab-assigned .k-card-header > div,
+    #tab-cards .k-card-header > div,
+    #tab-logs .k-card-header > div {
+        flex-wrap: wrap;
+        width: 100%;
+    }
+    #tab-accounts .k-card-header .ui-btn,
+    #tab-accounts .k-card-header .k-dropdown,
+    #tab-assigned .k-card-header .ui-btn,
+    #tab-assigned .k-card-header .k-dropdown,
+    #tab-cards .k-card-header .ui-btn,
+    #tab-cards .k-card-header .k-dropdown,
+    #tab-logs .k-card-header .ui-btn,
+    #tab-logs .k-card-header .k-dropdown {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    /* 筛选栏输入框填满单行 */
+    #tab-accounts .k-card-body > div:first-child .k-input[type="text"],
+    #tab-assigned .k-card-body > div:first-child .k-input[type="text"],
+    #tab-cards .k-card-body > div:first-child .k-input[type="text"],
+    #tab-logs .k-card-body > div:first-child .k-input[type="text"] {
+        width: 100%;
+        min-width: 0;
+        flex: 1 1 100%;
+    }
+    #tab-accounts .k-card-body > div:first-child .k-input[type="date"],
+    #tab-assigned .k-card-body > div:first-child .k-input[type="date"],
+    #tab-cards .k-card-body > div:first-child .k-input[type="date"],
+    #tab-logs .k-card-body > div:first-child .k-input[type="date"] {
+        flex: 1 1 140px;
+        min-width: 0;
+    }
+
+    /* 解除外层 overflow-x:auto 带来的横滚，卡片布局不需要 */
+    #tab-accounts .k-card-body > div:nth-of-type(2),
+    #tab-assigned .k-card-body > div:nth-of-type(2) {
+        overflow-x: visible !important;
+    }
+
+    /* 表格 → 堆叠布局 */
+    #tab-accounts table,
+    #tab-assigned table,
+    #tab-cards table,
+    #tab-logs table {
+        display: block;
+        min-width: 0;
+    }
+    #tab-accounts thead,
+    #tab-assigned thead,
+    #tab-cards thead,
+    #tab-logs thead {
+        display: none;
+    }
+    #tab-accounts tbody,
+    #tab-assigned tbody,
+    #tab-cards tbody,
+    #tab-logs tbody {
+        display: block;
+    }
+    #tab-accounts tbody tr,
+    #tab-assigned tbody tr,
+    #tab-cards tbody tr,
+    #tab-logs tbody tr {
+        display: block;
+        padding: 12px 14px;
+        margin-bottom: 10px;
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+    }
+    #tab-accounts tbody tr:hover,
+    #tab-assigned tbody tr:hover,
+    #tab-cards tbody tr:hover,
+    #tab-logs tbody tr:hover {
+        background: var(--bg-subtle);
+    }
+    #tab-accounts tbody td[data-label],
+    #tab-assigned tbody td[data-label],
+    #tab-cards tbody td[data-label],
+    #tab-logs tbody td[data-label] {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 6px 0;
+        border: none;
+        font-size: 13px;
+        min-height: 28px;
+    }
+    #tab-accounts tbody td[data-label]::before,
+    #tab-assigned tbody td[data-label]::before,
+    #tab-cards tbody td[data-label]::before,
+    #tab-logs tbody td[data-label]::before {
+        content: attr(data-label);
+        flex: 0 0 auto;
+        color: var(--text-muted);
+        font-size: 12px;
+        font-weight: 500;
+        line-height: 1.8;
+    }
+    /* 操作日志：详情字段通常较长，改成纵向（标签在上、内容在下）以避免挤压 */
+    #tab-logs tbody td[data-label="详情"] {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    #tab-logs tbody td[data-label="详情"]::before {
+        margin-bottom: 4px;
+    }
+    #tab-cards tbody td[data-label] > *,
+    #tab-logs tbody td[data-label] > * {
+        text-align: right;
+        min-width: 0;
+    }
+    #tab-logs tbody td[data-label="详情"] {
+        text-align: left;
+    }
+
+    #tab-accounts tbody td[colspan],
+    #tab-assigned tbody td[colspan],
+    #tab-cards tbody td[colspan],
+    #tab-logs tbody td[colspan] {
+        display: block;
+        padding: 24px 0;
+        text-align: center;
+    }
+
+    /* 分页按钮不要挤在一行 */
+    .pagination { row-gap: 6px; }
+
+    #tab-accounts .account-table-scroll,
+    #tab-assigned .account-table-scroll {
+        overflow: visible;
+        padding-bottom: 0;
+    }
+
+    #tab-accounts tbody tr,
+    #tab-assigned tbody tr {
+        position: relative;
+        padding: 13px 14px;
+        background: #ffffff;
+        border: none;
+        border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(24, 24, 27, 0.06);
+    }
+
+    #tab-accounts tbody tr:hover,
+    #tab-assigned tbody tr:hover {
+        background: #ffffff;
+    }
+
+    #tab-accounts tbody tr:has(td[colspan]),
+    #tab-assigned tbody tr:has(td[colspan]) {
+        padding: 0;
+        background: transparent;
+        box-shadow: none;
+    }
+
+    #tab-accounts tbody td[data-label],
+    #tab-assigned tbody td[data-label] {
+        display: grid;
+        grid-template-columns: 78px minmax(0, 1fr);
+        align-items: center;
+        gap: 10px;
+        padding: 5px 0;
+        min-height: 26px;
+    }
+
+    #tab-accounts tbody td[data-label]::before,
+    #tab-assigned tbody td[data-label]::before {
+        color: var(--text-subtle);
+        font-size: 11px;
+        line-height: 1.4;
+    }
+
+    #tab-accounts tbody td[data-label] > *,
+    #tab-assigned tbody td[data-label] > * {
+        text-align: left;
+        justify-self: stretch;
+        min-width: 0;
+    }
+
+    #tab-accounts tbody td[data-label="选择"] {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        display: block;
+        min-height: 0;
+        padding: 0;
+    }
+
+    #tab-accounts tbody td[data-label="选择"]::before {
+        content: none;
+    }
+
+    #tab-accounts tbody td[data-label="ID"] {
+        padding-right: 36px;
+    }
+
+    #tab-accounts tbody .account-email-cell,
+    #tab-assigned tbody .account-email-cell {
+        display: block;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    #tab-accounts tbody td[data-label]:has(.k-progress-bg),
+    #tab-assigned tbody td[data-label]:has(.k-progress-bg) {
+        display: grid;
+        grid-template-columns: 78px minmax(0, 1fr);
+        align-items: center;
+    }
+
+    #tab-accounts tbody td[data-label]:has(.k-progress-bg)::before,
+    #tab-assigned tbody td[data-label]:has(.k-progress-bg)::before {
+        margin-bottom: 0;
+    }
+
+    #tab-accounts tbody td[data-label]:has(.k-progress-bg) > div,
+    #tab-assigned tbody td[data-label]:has(.k-progress-bg) > div {
+        max-width: none !important;
+        width: 100%;
+    }
+
+    #tab-accounts tbody td[data-label] .k-progress-bg,
+    #tab-assigned tbody td[data-label] .k-progress-bg {
+        width: 100%;
+    }
+
+    #tab-accounts tbody td[data-label="操作"],
+    #tab-assigned tbody td[data-label="操作"] {
+        display: block;
+        padding-top: 10px;
+    }
+
+    #tab-accounts tbody td[data-label="操作"]::before,
+    #tab-assigned tbody td[data-label="操作"]::before {
+        content: none;
+    }
+
+    #tab-accounts tbody .account-actions,
+    #tab-assigned tbody .account-actions {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 7px;
+        width: 100%;
+    }
+
+    #tab-accounts tbody .account-actions .ui-btn,
+    #tab-assigned tbody .account-actions .ui-btn {
+        justify-content: center;
+        min-width: 0;
+        padding-left: 8px;
+        padding-right: 8px;
+    }
+}
+
+@media (max-width: 640px) {
+    #tab-dashboard .k-card-body {
+        overflow-x: visible !important;
+    }
+
+    #tab-dashboard table,
+    #tab-dashboard tbody,
+    #tab-dashboard tr,
+    #tab-dashboard td {
+        display: block;
+        width: 100%;
+        min-width: 0;
+    }
+
+    #tab-dashboard thead {
+        display: none;
+    }
+
+    #tab-dashboard tbody tr {
+        padding: 11px 16px;
+        border-bottom: 1px solid var(--border);
+        background: var(--bg-surface);
+    }
+
+    #tab-dashboard tbody tr:last-child {
+        border-bottom: none;
+    }
+
+    #tab-dashboard tbody td {
+        padding: 0;
+        border: none;
+    }
+
+    #tab-dashboard .recent-action {
+        color: var(--text-main);
+        font-weight: 700;
+        white-space: nowrap !important;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    #tab-dashboard .recent-detail {
+        margin-top: 4px;
+        line-height: 1.45;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+
+    #tab-dashboard .recent-time {
+        margin-top: 5px;
+        font-size: 11px !important;
+    }
+
+    #tab-accounts .k-card-header {
+        align-items: stretch;
+    }
+
+    #tab-accounts .k-card-header > div {
+        display: grid !important;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 6px !important;
+        width: 100%;
+        flex-wrap: nowrap;
+    }
+
+    #tab-accounts .k-card-header .ui-btn,
+    #tab-accounts .k-card-header .k-dropdown {
+        width: 100%;
+        min-width: 0;
+        flex: 0 1 auto;
+    }
+
+    #tab-accounts .k-card-header .ui-btn-sm,
+    #tab-accounts .k-card-header .k-dropdown-trigger {
+        min-height: 30px;
+        height: 30px;
+        padding-left: 6px;
+        padding-right: 6px;
+        font-size: 10.5px;
+    }
+
+    #tab-accounts .k-card-header .k-dropdown-trigger.ui-btn {
+        padding-right: 18px;
+    }
+
+    #tab-accounts .k-card-header .k-dropdown-trigger.ui-btn::after {
+        right: 6px;
+    }
+
+    #tab-accounts tbody td[data-label],
+    #tab-assigned tbody td[data-label] {
+        grid-template-columns: 64px minmax(0, 1fr);
+        gap: 8px;
+    }
+
+    #tab-accounts tbody td[data-label]:has(.k-progress-bg),
+    #tab-assigned tbody td[data-label]:has(.k-progress-bg) {
+        grid-template-columns: 64px minmax(0, 1fr);
+    }
+
+    #tab-accounts .account-subscription-cell .subscription-badge,
+    #tab-assigned .account-subscription-cell .subscription-badge {
+        justify-self: start !important;
+        width: auto;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    #tab-accounts .account-usage-cell > div:first-child,
+    #tab-assigned .account-usage-cell > div:first-child {
+        grid-column: 2;
+        max-width: none !important;
+        width: 100%;
+    }
+
+    #tab-accounts .account-usage-cell .k-progress-bg,
+    #tab-assigned .account-usage-cell .k-progress-bg {
+        grid-column: 2;
+        width: 100%;
+        min-width: 0;
+    }
+
+    #tab-accounts .account-action-cell,
+    #tab-assigned .account-action-cell {
+        display: block !important;
+        padding-top: 10px;
+    }
+
+    #tab-accounts .account-action-cell::before,
+    #tab-assigned .account-action-cell::before {
+        content: none !important;
+    }
+
+    #tab-settings .k-card-header {
+        flex-direction: row;
+        align-items: center;
+    }
+
+    #tab-settings .k-card-title {
+        flex: 1 1 auto;
+    }
+
+    #tab-settings .k-card-header .ui-btn {
+        flex: 0 0 auto;
+        width: auto;
+        margin-left: auto;
+    }
+
+    .account-info-modal {
+        padding: 10px;
+    }
+
+    .account-info-modal .modal-content {
+        width: 100%;
+        max-width: 100%;
+        max-height: calc(100dvh - 20px);
+    }
+
+    .account-info-modal .modal-body {
+        padding: 14px;
+    }
+
+    .account-info-modal .account-detail-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+    }
+
+    .account-info-modal .account-detail-row {
+        padding: 9px 10px;
+    }
+
+    .account-info-modal .account-detail-row span {
+        margin-bottom: 3px;
+        font-size: 10.5px;
+    }
+
+    .account-info-modal .account-detail-row strong {
+        font-size: 12px;
+    }
+
+    .account-info-modal .account-detail-section {
+        margin-top: 14px;
+    }
+
+    .account-info-modal .model-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+    }
+
+    .account-info-modal .model-item {
+        align-items: center;
+        gap: 6px;
+        padding: 7px;
+        box-shadow: none;
+    }
+
+    .account-info-modal .model-icon {
+        width: 20px;
+        height: 20px;
+        flex-basis: 20px;
+    }
+
+    .account-info-modal .model-title span {
+        font-size: 11px;
+    }
+
+    .account-info-modal .model-id {
+        font-size: 10px;
+    }
+
+    .account-info-modal .model-desc,
+    .account-info-modal .model-params {
+        display: none;
+    }
+
+    .card-log-modal {
+        padding: 10px;
+    }
+
+    .card-log-content {
+        width: 100%;
+        max-width: 100% !important;
+        max-height: calc(100dvh - 20px);
+    }
+
+    .card-log-body {
+        max-height: none;
+        overflow-x: hidden !important;
+        overflow-y: auto;
+    }
+
+    .card-log-table,
+    .card-log-table tbody,
+    .card-log-table tr,
+    .card-log-table td {
+        display: block;
+        width: 100%;
+        min-width: 0;
+    }
+
+    .card-log-table thead {
+        display: none;
+    }
+
+    .card-log-table tr {
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .card-log-table tr:last-child {
+        border-bottom: none;
+    }
+
+    .card-log-table td {
+        display: grid;
+        grid-template-columns: 70px minmax(0, 1fr);
+        gap: 8px;
+        padding: 3px 0;
+        border: none;
+        white-space: normal !important;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+
+    .card-log-table td::before {
+        content: attr(data-label);
+        color: var(--text-muted);
+        font-size: 11px;
+        font-family: inherit;
+    }
+
+    .card-log-action,
+    .card-log-time {
+        white-space: nowrap !important;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}
