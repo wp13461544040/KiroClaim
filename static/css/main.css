@@ -1217,6 +1217,79 @@ body {
     height: 100%;
 }
 
+.cute-status-chart.cute-status-chart-triple {
+    grid-template-columns: minmax(82px, 1fr) minmax(82px, 1fr) 170px minmax(82px, 1fr);
+    gap: 16px;
+}
+
+/* 简洁布局：左侧竖向列表 + 右侧圆环 */
+.cute-status-chart-simple {
+    display: grid;
+    grid-template-columns: minmax(200px, 280px) auto;
+    gap: 40px;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 20px;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.cute-status-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.cute-stat-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-radius: 10px;
+    background: var(--chart-soft);
+    transition: all 0.2s ease;
+}
+
+.cute-stat-item:hover {
+    transform: translateX(4px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.cute-stat-item.mint {
+    --chart-color: #34d399;
+    --chart-soft: #ecfdf5;
+}
+
+.cute-stat-item.amber {
+    --chart-color: #f59e0b;
+    --chart-soft: #fffbeb;
+}
+
+.cute-stat-item.rose {
+    --chart-color: #fb7185;
+    --chart-soft: #fff1f2;
+}
+
+.cute-stat-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.cute-stat-item .cute-stat-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-main);
+    margin: 0;
+}
+
+.cute-stat-item .cute-stat-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--chart-color);
+    font-variant-numeric: tabular-nums;
+}
+
 .cute-stat-pill {
     width: 100%;
     max-width: 132px;
@@ -1229,6 +1302,11 @@ body {
 .cute-stat-pill.mint {
     --chart-color: #34d399;
     --chart-soft: #ecfdf5;
+}
+
+.cute-stat-pill.amber {
+    --chart-color: #f59e0b;
+    --chart-soft: #fffbeb;
 }
 
 .cute-stat-pill.rose {
@@ -1286,6 +1364,10 @@ body {
 
 .cute-ring-segment.delayed {
     animation-delay: 0.15s;
+}
+
+.cute-ring-segment.delayed-more {
+    animation-delay: 0.3s;
 }
 
 .cute-donut-center {
@@ -1569,6 +1651,16 @@ tr:last-child td { border-bottom: none; }
 .ui-btn-danger:hover:not(:disabled) {
     background: var(--danger-bg);
     border-color: var(--danger);
+}
+
+.ui-btn-warning {
+    background: var(--bg-surface);
+    color: #f59e0b;
+    border-color: #fbbf24;
+}
+.ui-btn-warning:hover:not(:disabled) {
+    background: #fffbeb;
+    border-color: #f59e0b;
 }
 
 .ui-btn-sm {
@@ -1986,6 +2078,23 @@ textarea.k-input::-webkit-scrollbar-corner {
 }
 .k-dropdown-item.disabled:hover { background: transparent; }
 
+.k-dropdown-label {
+    padding: 6px 10px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: default;
+    user-select: none;
+}
+
+.k-dropdown-divider {
+    height: 1px;
+    margin: 4px 6px;
+    background: var(--border);
+}
+
 .k-checkbox {
     -webkit-appearance: none;
     appearance: none;
@@ -2126,6 +2235,44 @@ textarea.k-input::-webkit-scrollbar-corner {
 
 .card-log-content {
     max-width: 640px;
+}
+
+/* 导入标签页样式 */
+.import-tab-btn {
+    padding: 8px 16px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.import-tab-btn:hover {
+    color: var(--text-main);
+    background: var(--bg-hover);
+}
+
+.import-tab-btn.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+}
+
+.import-tab-panel {
+    animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .card-log-body {

@@ -81,10 +81,24 @@
         min-height: 220px;
     }
 
-    .cute-status-chart {
+    .cute-status-chart,
+    .cute-status-chart.cute-status-chart-triple,
+    .cute-status-chart-simple {
         grid-template-columns: 1fr;
         gap: 14px;
         min-height: 360px;
+    }
+    
+    .cute-status-chart-simple {
+        padding: 16px;
+    }
+    
+    .cute-status-list {
+        order: 1;
+    }
+    
+    .cute-donut {
+        order: 0;
     }
 
     .cute-stat-pill {

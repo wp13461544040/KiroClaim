@@ -53,86 +53,69 @@ async function fetchAllPages(baseUrl, pageSize) {
   return all;
 }
 
-// 导出账号，支持 csv / xlsx 格式（仅导出账号池里的未分配账号）
-async function exportAccounts(format) {
-  var url = '/admin/accounts?used=false';
-  if (accountStatusFilter) url += '&status=' + accountStatusFilter;
-  if (accountKeyword) url += '&keyword=' + encodeURIComponent(accountKeyword);
+// 导出账号，仅支持 JSON 格式
+// exportType: 'selected' 导出选中账号, 'all' 导出全部筛选结果
+async function exportAccounts(format, exportType) {
+  // 只支持 JSON 格式
+  if (format !== 'json') {
+    showToast('仅支持 JSON 格式导出', 'error');
+    return;
+  }
 
-  var list = await fetchAllPages(url, 500);
+  let list = [];
+  let description = '';
+
+  if (exportType === 'selected') {
+    // 导出选中的账号
+    if (selectedAccountIds.size === 0) {
+      showToast('请先选择要导出的账号', 'info');
+      return;
+    }
+    
+    // 构造查询 URL，使用 IDs 筛选
+    const ids = Array.from(selectedAccountIds);
+    const url = '/admin/accounts?used=false&size=1000';
+    const r = await api('GET', url);
+    
+    if (r.code === 0 && r.data && r.data.list) {
+      // 过滤出选中的账号
+      list = r.data.list.filter(a => ids.includes(a.ID));
+    }
+    
+    description = '选中的';
+  } else {
+    // 导出全部账号（按筛选条件）
+    var url = '/admin/accounts?used=false';
+    if (accountStatusFilter) url += '&status=' + accountStatusFilter;
+    if (accountSubscriptionFilter) url += '&subscription=' + encodeURIComponent(accountSubscriptionFilter);
+    if (accountKeyword) url += '&keyword=' + encodeURIComponent(accountKeyword);
+
+    list = await fetchAllPages(url, 500);
+    description = '全部';
+  }
+
   if (!list.length) {
     showToast('没有可导出的数据', 'info');
     return;
   }
+
   var dateStr = new Date().toISOString().slice(0, 10);
-  var headers = ['ID', '邮箱', '健康状态', '订阅', '已用额度', '总额度', '使用状态', '最后检查'];
 
-  // 构建行数据
-  var rows = list.map(function(a) {
-    return [
-      a.ID || '',
-      a.Email || '',
-      a.Status || '',
-      a.Subscription || '',
-      a.CreditUsed || 0,
-      a.CreditLimit || 0,
-      a.Used ? '已分配' : '可用',
-      a.LastCheckedAt ? new Date(a.LastCheckedAt).toLocaleString('zh-CN', {hour12: false}) : ''
-    ];
+  // 导出为 JSON 格式（与导入格式保持一致）
+  var jsonData = list.map(function(a) {
+    return {
+      refreshToken: a.RefreshToken || '',
+      accessToken: a.AccessToken || '',
+      clientId: a.ClientId || '',
+      clientSecret: a.ClientSecret || '',
+      provider: a.Provider || '',
+      region: a.Region || ''
+    };
   });
+  var jsonStr = JSON.stringify(jsonData, null, 2);
+  downloadFile(jsonStr, 'accounts_' + dateStr + '.json', 'application/json;charset=utf-8');
 
-  if (format === 'csv') {
-    var csv = headers.join(',') + '\n';
-    rows.forEach(function(row) {
-      csv += row.map(function(v) {
-        var s = String(v);
-        if (s.indexOf(',') >= 0 || s.indexOf('"') >= 0) return '"' + s.replace(/"/g, '""') + '"';
-        return s;
-      }).join(',') + '\n';
-    });
-    downloadFile('\uFEFF' + csv, 'accounts_' + dateStr + '.csv', 'text/csv;charset=utf-8');
-  } else if (format === 'xlsx') {
-    try {
-      await ensureXlsxLoaded();
-    } catch (e) {
-      showToast(e.message || 'XLSX 组件加载失败', 'error');
-      return;
-    }
-    var data = [headers].concat(rows);
-    var ws = XLSX.utils.aoa_to_sheet(data);
-    ws['!cols'] = [
-      { wch: 8 },   // ID
-      { wch: 30 },  // 邮箱
-      { wch: 10 },  // 健康状态
-      { wch: 10 },  // 订阅
-      { wch: 10 },  // 已用额度
-      { wch: 10 },  // 总额度
-      { wch: 10 },  // 使用状态
-      { wch: 20 }   // 最后检查
-    ];
-    var wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-    XLSX.writeFile(wb, 'accounts_' + dateStr + '.xlsx');
-  } else if (format === 'json') {
-    // 导出为完整的 Kiro_results.json 格式
-    var jsonData = list.map(function(a) {
-      return {
-        clientId: a.ClientId || '',
-        clientSecret: a.ClientSecret || '',
-        creditLimit: a.CreditLimit || 0,
-        creditUsed: a.CreditUsed || 0,
-        email: a.Email || '',
-        provider: a.Provider || 'idc',
-        refreshToken: a.RefreshToken || '',
-        region: a.Region || 'us-east-1',
-        subscription: a.Subscription || '',
-        time: formatExportTime(a.CreatedAt)
-      };
-    });
-    var jsonStr = JSON.stringify(jsonData, null, 2);
-    downloadFile(jsonStr, 'accounts_' + dateStr + '.json', 'application/json;charset=utf-8');
-  }
-  showToast('导出成功，共 ' + list.length + ' 条', 'success');
+  showToast(`导出${description}账号成功，共 ${list.length} 条`, 'success');
 }
 
 // 导出卡密，支持 txt / csv / xlsx 格式

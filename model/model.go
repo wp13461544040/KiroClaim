@@ -12,6 +12,7 @@ type AccountStatus string
 
 const (
 	AccountStatusActive    AccountStatus = "active"
+	AccountStatusUsed      AccountStatus = "used"        // 额度已被使用
 	AccountStatusSuspended AccountStatus = "suspended"
 )
 

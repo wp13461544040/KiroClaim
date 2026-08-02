@@ -8,7 +8,7 @@
   <link rel="alternate icon" href="/static/favicon.ico">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
   <link rel="manifest" href="/static/site.webmanifest">
-  <link rel="stylesheet" href="/static/css/main.css?v=0.2.1-beta">
+  <link rel="stylesheet" href="/static/css/main.css?v=0.2.6">
   <link rel="stylesheet" href="/static/css/responsive.css">
 </head>
 <body>
@@ -99,10 +99,6 @@
           </div>
           <div class="k-card-body">
             <div id="accountStatusChart" class="dashboard-chart"></div>
-            <div class="cute-summary-grid">
-              <div class="cute-legend-item" style="--chart-color:#34d399;--chart-soft:#ecfdf5"><span class="cute-dot"></span><span class="cute-legend-label">正常</span><span class="cute-legend-value" id="statActive">-</span></div>
-              <div class="cute-legend-item" style="--chart-color:#fb7185;--chart-soft:#fff1f2"><span class="cute-dot"></span><span class="cute-legend-label">已封禁</span><span class="cute-legend-value" id="statSuspended">-</span></div>
-            </div>
           </div>
         </div>
 
@@ -137,13 +133,16 @@
             <div style="display:flex; gap:8px">
               <div class="k-dropdown" id="exportAccountDropdown">
                 <div class="k-dropdown-trigger ui-btn ui-btn-secondary ui-btn-sm" onclick="toggleDropdown('exportAccountDropdown')" style="min-width:auto">导出</div>
-                <div class="k-dropdown-menu" style="min-width:120px">
-                  <div class="k-dropdown-item" onclick="exportAccounts('json')">JSON (完整格式)</div>
-                  <div class="k-dropdown-item" onclick="exportAccounts('csv')">CSV</div>
-                  <div class="k-dropdown-item" onclick="exportAccounts('xlsx')">XLSX</div>
+                <div class="k-dropdown-menu" style="min-width:160px">
+                  <div class="k-dropdown-label">导出选中</div>
+                  <div class="k-dropdown-item" onclick="exportAccounts('json', 'selected')">JSON (选中账号)</div>
+                  <div class="k-dropdown-divider"></div>
+                  <div class="k-dropdown-label">导出全部</div>
+                  <div class="k-dropdown-item" onclick="exportAccounts('json', 'all')">JSON (全部)</div>
                 </div>
               </div>
               <button class="ui-btn ui-btn-danger ui-btn-sm" id="batchDeleteAccountsBtn" style="display:none" onclick="batchDeleteAccounts()">批量删除 (<span id="selectedAccountCount">0</span>)</button>
+              <button class="ui-btn ui-btn-warning ui-btn-sm" onclick="cleanupUsedCreditAccounts()">清理额度已用</button>
               <button class="ui-btn ui-btn-danger ui-btn-sm" onclick="deleteBannedAccounts()">清理封禁账号</button>
               <button class="ui-btn ui-btn-primary ui-btn-sm" onclick="showImportModal()">导入账号</button>
               <button class="ui-btn ui-btn-danger ui-btn-sm" onclick="doClearAllAccounts()">一键清空</button>
@@ -163,6 +162,7 @@
                 <div class="k-dropdown-menu">
                   <div class="k-dropdown-item selected" onclick="selectAccountStatus('', '全部状态')">全部状态</div>
                   <div class="k-dropdown-item" onclick="selectAccountStatus('active', '正常')">正常</div>
+                  <div class="k-dropdown-item" onclick="selectAccountStatus('used', '额度已用')">额度已用</div>
                   <div class="k-dropdown-item" onclick="selectAccountStatus('suspended', '已封禁')">已封禁</div>
                 </div>
               </div>
@@ -504,13 +504,49 @@
         <button type="button" class="modal-close" aria-label="关闭" title="关闭" onclick="closeImportModal()">&times;</button>
       </div>
       <div class="modal-body">
+        <!-- 导入方式选择 -->
         <div style="margin-bottom: 20px;">
-          <label style="display:block; margin-bottom: 8px; font-size: 13px; color: var(--text-muted);">JSON 数据源</label>
-          <textarea class="k-input" id="importJson" placeholder="请输入标准 JSON 格式数据"></textarea>
+          <div style="display: flex; gap: 12px; margin-bottom: 16px; border-bottom: 1px solid #eaeaea; padding-bottom: 8px;">
+            <button class="import-tab-btn active" data-tab="json" onclick="switchImportTab('json')">JSON 字符串</button>
+            <button class="import-tab-btn" data-tab="file" onclick="switchImportTab('file')">JSON 文件</button>
+          </div>
+          
+          <!-- JSON 字符串导入面板 -->
+          <div id="importTabJson" class="import-tab-panel active">
+            <label style="display:block; margin-bottom: 8px; font-size: 13px; color: var(--text-muted);">JSON 数据源（数组或单个对象）</label>
+            <textarea class="k-input" id="importJson" placeholder='[{"refreshToken":"eyJ...","accessToken":"eyJ..."}]' style="min-height: 200px; font-family: monospace; font-size: 12px;"></textarea>
+            <div style="margin-top: 12px; padding: 10px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; font-size: 12px; color: #1e40af;">
+              <strong>格式说明：</strong><br>
+              • 支持 JSON 数组或单个对象<br>
+              • <code>refreshToken</code> 为必填字段<br>
+              • 可选字段：<code>accessToken</code>、<code>clientId</code>、<code>clientSecret</code>、<code>provider</code>、<code>region</code>
+            </div>
+          </div>
+          
+          <!-- JSON 文件导入面板 -->
+          <div id="importTabFile" class="import-tab-panel" style="display: none;">
+            <label style="display:block; margin-bottom: 8px; font-size: 13px; color: var(--text-muted);">选择 JSON 文件</label>
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+              <input type="file" id="importFile" accept=".json" style="flex: 1;" onchange="handleImportFileSelect(this)">
+              <button class="ui-btn ui-btn-secondary ui-btn-sm" onclick="downloadImportTemplate()">下载模板</button>
+            </div>
+            <div id="importFilePreview" style="margin-top: 12px; padding: 12px; background: #fafafa; border: 1px solid #eaeaea; border-radius: 6px; font-size: 13px; color: #666; display: none;">
+              <div style="font-weight: 600; margin-bottom: 8px;">文件预览</div>
+              <div id="importFileInfo"></div>
+            </div>
+            <div style="margin-top: 12px; padding: 10px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; font-size: 12px; color: #1e40af;">
+              <strong>格式说明：</strong><br>
+              • 仅支持 <code>.json</code> 格式文件<br>
+              • 文件内容应为 JSON 数组或单个对象<br>
+              • <code>refreshToken</code> 为必填字段<br>
+              • 可选字段：<code>accessToken</code>、<code>clientId</code>、<code>clientSecret</code>、<code>provider</code>、<code>region</code>
+            </div>
+          </div>
         </div>
+        
         <div style="display:flex; gap:12px">
           <button class="ui-btn ui-btn-primary" onclick="doImport(this)">执行导入</button>
-          <button class="ui-btn ui-btn-secondary" onclick="document.getElementById('importJson').value=''">清空</button>
+          <button class="ui-btn ui-btn-secondary" onclick="clearImportForm()">清空</button>
           <button class="ui-btn ui-btn-secondary" onclick="closeImportModal()">取消</button>
         </div>
         <div id="importResult" style="margin-top:20px"></div>
@@ -576,13 +612,13 @@
   </div>
 
   <!-- 页面脚本 -->
-  <script src="/static/js/ui.js"></script>
+  <script src="/static/js/ui.js?v=0.2.3"></script>
   <script src="/static/js/auth.js"></script>
   <script src="/static/js/api.js"></script>
-  <script src="/static/js/dashboard.js"></script>
-  <script src="/static/js/accounts.js"></script>
+  <script src="/static/js/dashboard.js?v=0.2.5"></script>
+  <script src="/static/js/accounts.js?v=0.2.4"></script>
   <script src="/static/js/cards.js?v=0.2.1-beta"></script>
-  <script src="/static/js/export.js"></script>
+  <script src="/static/js/export.js?v=0.2.4"></script>
   <script src="/static/js/logs.js"></script>
   <script src="/static/js/settings.js"></script>
   <script src="/static/js/commerce-admin-loader.js"></script>

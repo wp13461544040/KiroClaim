@@ -132,6 +132,7 @@ func main() {
 		admin.POST("/accounts/clear-all", handler.ClearAllAccounts)
 		admin.POST("/accounts/clear-assigned", handler.ClearAssignedAccounts)
 		admin.GET("/pool/stats", handler.PoolStats)
+		admin.POST("/accounts/cleanup-used-credit", handler.CleanupUsedCreditAccountsAPI)
 
 		admin.POST("/cards/generate", handler.GenerateCards)
 		admin.GET("/cards", handler.ListCards)
@@ -163,6 +164,7 @@ func main() {
 	}
 
 	handler.StartAutoUpdateScheduler()
+	handler.StartCleanupScheduler()  // 启动定期清理任务
 
 	go func() {
 		hup := make(chan os.Signal, 1)

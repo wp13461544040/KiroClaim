@@ -444,6 +444,7 @@ func BatchDeleteAccounts(c *gin.Context) {
 // POST /admin/accounts/delete-by-status
 // Body: { "status": "suspended" }
 // 按状态批量删除账号，常用于清理封禁账号。
+// 删除前会先刷新所有账号的健康状态，确保基于最新状态执行删除。
 func DeleteAccountsByStatus(c *gin.Context) {
 	var req struct {
 		Status string `json:"status" binding:"required"`
@@ -457,12 +458,52 @@ func DeleteAccountsByStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "只允许删除 suspended 状态"})
 		return
 	}
+
+	// 先获取所有账号进行健康检查
+	var allAccounts []model.Account
+	if err := database.DB.Find(&allAccounts).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "查询账号失败: " + err.Error()})
+		return
+	}
+
+	if len(allAccounts) == 0 {
+		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已删除", "data": gin.H{"deleted": 0}})
+		return
+	}
+
+	// 并发刷新所有账号状态
+	concurrency := currentUpstreamCheckConcurrency()
+	if concurrency <= 0 {
+		concurrency = 6
+	}
+
+	jobs := make(chan model.Account, len(allAccounts))
+	var wg sync.WaitGroup
+
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for account := range jobs {
+				result := checkAccountHealth(account)
+				_ = applyHealthResult(account.ID, result)
+			}
+		}()
+	}
+
+	for _, account := range allAccounts {
+		jobs <- account
+	}
+	close(jobs)
+	wg.Wait()
+
+	// 刷新完成后，查询最新的封禁账号并删除
 	result := database.DB.Unscoped().Where("status = ?", req.Status).Delete(&model.Account{})
 	if result.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": result.Error.Error()})
 		return
 	}
-	AddOpLogWithCtx(c, "delete", "批量删除 "+req.Status+" 状态账号 "+strconv.FormatInt(result.RowsAffected, 10)+" 个", "admin")
+	AddOpLogWithCtx(c, "delete", "批量删除 "+req.Status+" 状态账号 "+strconv.FormatInt(result.RowsAffected, 10)+" 个（已刷新状态）", "admin")
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已删除", "data": gin.H{"deleted": result.RowsAffected}})
 }
 
@@ -536,7 +577,7 @@ func PoolStats(c *gin.Context) {
 	database.DB.Model(&model.Account{}).Select("status, used, count(*) as count").Group("status, used").Find(&statusCounts)
 
 	var total, unused, used, available int64
-	var statusActive, statusSuspended int64
+	var statusActive, statusSuspended, statusUsed int64
 	for _, sc := range statusCounts {
 		total += sc.Count
 		if sc.Used {
@@ -547,10 +588,14 @@ func PoolStats(c *gin.Context) {
 				available += sc.Count
 			}
 		}
-		if model.AccountStatus(sc.Status) == model.AccountStatusSuspended {
-			statusSuspended += sc.Count
-		} else {
+		// 按状态分类统计
+		switch model.AccountStatus(sc.Status) {
+		case model.AccountStatusActive:
 			statusActive += sc.Count
+		case model.AccountStatusSuspended:
+			statusSuspended += sc.Count
+		case model.AccountStatusUsed:
+			statusUsed += sc.Count
 		}
 	}
 
@@ -612,6 +657,7 @@ func PoolStats(c *gin.Context) {
 			"status": gin.H{
 				"active":    statusActive,
 				"suspended": statusSuspended,
+				"used":      statusUsed,
 			},
 			"subscriptions": subscriptionDist,
 		},

@@ -26,8 +26,7 @@ async function loadStats() {
   // 动态骨架屏加载指示器
   const statIds = [
     'statAccTotal','statAccUnused','statCardUnused',
-    'statTodayActivate',
-    'statActive','statSuspended'
+    'statTodayActivate'
   ];
   statIds.forEach(function(id) {
     var el = document.getElementById(id);
@@ -65,10 +64,8 @@ async function loadStats() {
   var today = r.data.today || {};
   document.getElementById('statTodayActivate').textContent = today.activate || 0;
 
-  // 账号状态统计（两态）
-  const statusCount = r.data.accounts.status || { active: 0, suspended: 0 };
-  document.getElementById('statActive').textContent = statusCount.active;
-  document.getElementById('statSuspended').textContent = statusCount.suspended;
+  // 账号状态统计（三态）- 直接传递给图表，不更新独立元素
+  const statusCount = r.data.accounts.status || { active: 0, used: 0, suspended: 0 };
   drawAccountStatusChart(statusCount);
 
   // 加载最近活动
@@ -84,29 +81,50 @@ function drawAccountStatusChart(statusCount) {
   if (!canvas) return;
 
   const active = Math.max(0, statusCount.active || 0);
+  const used = Math.max(0, statusCount.used || 0);
   const suspended = Math.max(0, statusCount.suspended || 0);
-  const total = active + suspended;
+  const total = active + used + suspended;
 
   if (total === 0) {
     canvas.innerHTML = emptyChart();
     return;
   }
 
-  const pct = active / total * 100;
+  // 计算健康率（正常账号占比）
+  const healthPct = active / total * 100;
   const R = 64;
   const C = 2 * Math.PI * R;
   const activeLen = (active / total) * C;
-  const suspendedLen = C - activeLen;
-  const pctLabel = pct >= 99.95 ? '100' : pct.toFixed(pct >= 10 ? 1 : 2);
+  const usedLen = (used / total) * C;
+  const suspendedLen = (suspended / total) * C;
+  const pctLabel = healthPct >= 99.95 ? '100' : healthPct.toFixed(healthPct >= 10 ? 1 : 2);
 
   canvas.innerHTML = `
-    <div class="cute-status-chart">
-      <div class="cute-stat-pill mint">
-        <div class="cute-stat-label">
-          <span class="cute-dot"></span>
-          <span>正常</span>
+    <div class="cute-status-chart-simple">
+      <div class="cute-status-list">
+        <div class="cute-stat-item mint">
+          <div class="cute-stat-info">
+            <span class="cute-dot"></span>
+            <span class="cute-stat-label">正常</span>
+          </div>
+          <div class="cute-stat-value">${active}</div>
         </div>
-        <div class="cute-stat-number">${active}</div>
+        
+        <div class="cute-stat-item amber">
+          <div class="cute-stat-info">
+            <span class="cute-dot"></span>
+            <span class="cute-stat-label">额度已用</span>
+          </div>
+          <div class="cute-stat-value">${used}</div>
+        </div>
+        
+        <div class="cute-stat-item rose">
+          <div class="cute-stat-info">
+            <span class="cute-dot"></span>
+            <span class="cute-stat-label">已封禁</span>
+          </div>
+          <div class="cute-stat-value">${suspended}</div>
+        </div>
       </div>
 
       <div class="cute-donut">
@@ -115,6 +133,10 @@ function drawAccountStatusChart(statusCount) {
             <linearGradient id="gradActive" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stop-color="#7dd3fc"/>
               <stop offset="100%" stop-color="#34d399"/>
+            </linearGradient>
+            <linearGradient id="gradUsed" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#fcd34d"/>
+              <stop offset="100%" stop-color="#f59e0b"/>
             </linearGradient>
             <linearGradient id="gradSuspended" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stop-color="#fda4af"/>
@@ -127,11 +149,16 @@ function drawAccountStatusChart(statusCount) {
               stroke-dasharray="${activeLen} ${C - activeLen}"
               stroke-dashoffset="0"
               class="cute-ring-segment"/>` : ''}
+          ${used > 0 ? `<circle cx="80" cy="80" r="${R}" fill="none"
+              stroke="url(#gradUsed)" stroke-width="18" stroke-linecap="round"
+              stroke-dasharray="${usedLen} ${C - usedLen}"
+              stroke-dashoffset="${-activeLen}"
+              class="cute-ring-segment delayed"/>` : ''}
           ${suspended > 0 ? `<circle cx="80" cy="80" r="${R}" fill="none"
               stroke="url(#gradSuspended)" stroke-width="18" stroke-linecap="round"
               stroke-dasharray="${suspendedLen} ${C - suspendedLen}"
-              stroke-dashoffset="${-activeLen}"
-              class="cute-ring-segment delayed"/>` : ''}
+              stroke-dashoffset="${-(activeLen + usedLen)}"
+              class="cute-ring-segment delayed-more"/>` : ''}
         </svg>
         <div class="cute-donut-center">
           <div class="cute-donut-value">
@@ -139,14 +166,6 @@ function drawAccountStatusChart(statusCount) {
           </div>
           <div class="cute-donut-label">健康率</div>
         </div>
-      </div>
-
-      <div class="cute-stat-pill rose">
-        <div class="cute-stat-label">
-          <span class="cute-dot"></span>
-          <span>已封禁</span>
-        </div>
-        <div class="cute-stat-number">${suspended}</div>
       </div>
     </div>
   `;

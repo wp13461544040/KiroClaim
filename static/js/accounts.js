@@ -362,18 +362,188 @@ function closeImportModal() {
   document.getElementById('importResult').innerHTML = '';
 }
 
+// 切换导入方式标签
+function switchImportTab(tab) {
+  // 切换按钮状态
+  document.querySelectorAll('.import-tab-btn').forEach(btn => {
+    btn.classList.remove('active');
+    if (btn.dataset.tab === tab) {
+      btn.classList.add('active');
+    }
+  });
+
+  // 切换面板显示
+  document.querySelectorAll('.import-tab-panel').forEach(panel => {
+    panel.style.display = 'none';
+  });
+
+  if (tab === 'json') {
+    document.getElementById('importTabJson').style.display = 'block';
+  } else if (tab === 'file') {
+    document.getElementById('importTabFile').style.display = 'block';
+  }
+}
+
+// 处理文件选择
+let selectedImportFile = null;
+
+function handleImportFileSelect(input) {
+  const file = input.files[0];
+  if (!file) {
+    selectedImportFile = null;
+    document.getElementById('importFilePreview').style.display = 'none';
+    return;
+  }
+
+  selectedImportFile = file;
+  const preview = document.getElementById('importFilePreview');
+  const info = document.getElementById('importFileInfo');
+  
+  const fileSize = (file.size / 1024).toFixed(2);
+  const fileExt = file.name.split('.').pop().toUpperCase();
+  
+  info.innerHTML = `
+    <div><strong>文件名:</strong> ${escapeHtml(file.name)}</div>
+    <div><strong>大小:</strong> ${fileSize} KB</div>
+    <div><strong>类型:</strong> ${fileExt}</div>
+  `;
+  preview.style.display = 'block';
+}
+
+// 清空导入表单
+function clearImportForm() {
+  // 清空 JSON 输入
+  document.getElementById('importJson').value = '';
+  
+  // 清空文件选择
+  const fileInput = document.getElementById('importFile');
+  if (fileInput) {
+    fileInput.value = '';
+  }
+  selectedImportFile = null;
+  document.getElementById('importFilePreview').style.display = 'none';
+  
+  // 清空结果
+  document.getElementById('importResult').innerHTML = '';
+}
+
+// 下载导入模板
+function downloadImportTemplate() {
+  const template = {
+    json: `[
+  {
+    "refreshToken": "eyJ...",
+    "accessToken": "eyJ...",
+    "clientId": "",
+    "clientSecret": "",
+    "provider": "",
+    "region": ""
+  }
+]`
+  };
+
+  const content = template.json;
+  const filename = 'account_template.json';
+  const mimeType = 'application/json;charset=utf-8;';
+
+  // 下载文件
+  const blob = new Blob([content], { type: mimeType });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
+  showToast('JSON 模板已下载', 'success');
+}
+
+// 读取 JSON 文件内容并解析为账号数组
+async function parseImportFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    const fileName = file.name.toLowerCase();
+
+    // 只支持 JSON 格式
+    if (!fileName.endsWith('.json')) {
+      reject(new Error('仅支持 .json 格式文件'));
+      return;
+    }
+
+    reader.onload = (e) => {
+      try {
+        const content = e.target.result;
+        const parsed = JSON.parse(content);
+        const accounts = Array.isArray(parsed) ? parsed : [parsed];
+
+        if (accounts.length === 0) {
+          reject(new Error('文件中没有找到有效的账号数据'));
+          return;
+        }
+
+        resolve(accounts);
+      } catch (err) {
+        reject(new Error('JSON 解析失败: ' + err.message));
+      }
+    };
+
+    reader.onerror = () => reject(new Error('文件读取失败'));
+    reader.readAsText(file);
+  });
+}
+
 // 导入账号
 async function doImport(btn) {
-  const raw = document.getElementById('importJson').value.trim();
   const resultEl = document.getElementById('importResult');
-
   let data;
-  try {
-    data = JSON.parse(raw);
-  } catch (e) {
-    resultEl.innerHTML = '<span style="color:red">JSON 格式错误：' + e.message + '</span>';
-    showToast('JSON 格式错误', 'error');
-    return;
+
+  // 检查是文件导入还是 JSON 导入
+  const activeTab = document.querySelector('.import-tab-btn.active')?.dataset.tab || 'json';
+
+  if (activeTab === 'file') {
+    // 文件导入
+    if (!selectedImportFile) {
+      resultEl.innerHTML = '<span style="color:red">请先选择要导入的文件</span>';
+      showToast('请先选择文件', 'error');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = '解析中...';
+    resultEl.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:12px;background:#fafafa;border:1px solid #eaeaea;border-radius:6px;font-size:13px;color:#666">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite;flex-shrink:0">
+        <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+      </svg>
+      正在解析文件...
+    </div>`;
+
+    try {
+      data = await parseImportFile(selectedImportFile);
+      resultEl.innerHTML = `<div style="padding:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:13px;color:#15803d">
+        文件解析成功，共 ${data.length} 条记录
+      </div>`;
+    } catch (e) {
+      resultEl.innerHTML = `<div style="padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:13px;color:#991b1b">${escapeHtml(e.message)}</div>`;
+      showToast('文件解析失败', 'error');
+      btn.disabled = false;
+      btn.textContent = '执行导入';
+      return;
+    }
+  } else {
+    // JSON 导入
+    const raw = document.getElementById('importJson').value.trim();
+    
+    if (!raw) {
+      resultEl.innerHTML = '<span style="color:red">请输入 JSON 数据或切换到文件导入</span>';
+      showToast('请输入数据', 'error');
+      return;
+    }
+
+    try {
+      data = JSON.parse(raw);
+    } catch (e) {
+      resultEl.innerHTML = '<span style="color:red">JSON 格式错误：' + escapeHtml(e.message) + '</span>';
+      showToast('JSON 格式错误', 'error');
+      return;
+    }
   }
 
   const total = Array.isArray(data) ? data.length : 1;
@@ -398,13 +568,13 @@ async function doImport(btn) {
 
       pollImportStatus(taskId, total, resultEl, btn);
     } else {
-      resultEl.innerHTML = `<div style="padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:13px;color:#991b1b">提交失败：${r.message || r.msg || '未知错误'}</div>`;
+      resultEl.innerHTML = `<div style="padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:13px;color:#991b1b">提交失败：${escapeHtml(r.message || r.msg || '未知错误')}</div>`;
       showToast('提交失败：' + (r.message || r.msg || '未知错误'), 'error');
       btn.disabled = false;
       btn.textContent = '执行导入';
     }
   } catch (e) {
-    resultEl.innerHTML = `<div style="padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:13px;color:#991b1b">提交出错：${e.message}</div>`;
+    resultEl.innerHTML = `<div style="padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:13px;color:#991b1b">提交出错：${escapeHtml(e.message)}</div>`;
     showToast('提交出错', 'error');
     btn.disabled = false;
     btn.textContent = '执行导入';
@@ -593,13 +763,36 @@ async function batchDeleteAccounts() {
 
 // 一键清理所有已封禁账号
 async function deleteBannedAccounts() {
-  if (!confirm('确认删除全部「已封禁」状态的账号？此操作不可恢复')) return;
+  if (!confirm('此操作会先刷新所有账号状态，然后删除确认为「已封禁」的账号。\n\n确认继续？')) return;
+  
+  showToast('正在刷新账号状态...', 'info');
+  
   const r = await api('POST', '/admin/accounts/delete-by-status', { status: 'suspended' });
   if (r.code === 0) {
     showToast(`已清理 ${r.data?.deleted || 0} 个封禁账号`, 'success');
     loadAccounts(1);
     loadAccountSubscriptionFilter();
     loadStats();
+  } else {
+    showToast('清理失败：' + (r.message || r.msg || '未知错误'), 'error');
+  }
+}
+
+// 手动清理额度已用账号
+async function cleanupUsedCreditAccounts() {
+  if (!confirm('此操作会将额度已用的账号标记为「额度已用」状态并移至已分配池。\n\n确认继续？')) return;
+  
+  const r = await api('POST', '/admin/accounts/cleanup-used-credit');
+  if (r.code === 0) {
+    const cleaned = r.data?.cleaned || 0;
+    if (cleaned > 0) {
+      showToast(`已清理 ${cleaned} 个额度已用账号`, 'success');
+      loadAccounts(1);
+      loadAccountSubscriptionFilter();
+      loadStats();
+    } else {
+      showToast('没有需要清理的账号', 'info');
+    }
   } else {
     showToast('清理失败：' + (r.message || r.msg || '未知错误'), 'error');
   }

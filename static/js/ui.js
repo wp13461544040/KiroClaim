@@ -1,9 +1,12 @@
 // UI 工具函数模块
 
-// 状态徽章（两态）
+// 状态徽章（三态）
 function healthBadge(status) {
   if (status === 'suspended') {
     return '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:8px;background:#ef4444;border-radius:50%"></span>已封禁</span>';
+  }
+  if (status === 'used') {
+    return '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:8px;background:#f59e0b;border-radius:50%"></span>额度已用</span>';
   }
   // 默认：active 或任何未知值都当作正常（瞬时故障不建独立态）
   return '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:8px;background:#10b981;border-radius:50%"></span>正常</span>';
