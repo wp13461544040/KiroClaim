@@ -847,6 +847,7 @@ async function loadAccountSubscriptionFilter() {
 
 let assignedStatusFilter = '';
 let assignedKeyword = '';
+let selectedAssignedIds = new Set();
 
 async function loadAssignedAccounts(page = 1) {
   assignedKeyword = (document.getElementById('assignedKeyword')?.value || '').trim();
@@ -857,7 +858,8 @@ async function loadAssignedAccounts(page = 1) {
   const r = await api('GET', url);
   const tbody = document.getElementById('assignedBody');
   if (r.code !== 0 || !r.data.list.length) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:40px">暂无已分配账号</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:40px">暂无已分配账号</td></tr>';
+    updateAssignedBatchBtn();
     return;
   }
   tbody.innerHTML = r.data.list.map(a => {
@@ -866,10 +868,12 @@ async function loadAssignedAccounts(page = 1) {
     const creditPct = creditLimit > 0 ? Math.min(100, Math.round(creditUsed / creditLimit * 100)) : 0;
     const creditCls = creditPct >= 90 ? 'danger' : creditPct >= 70 ? 'warn' : '';
     const creditText = creditLimit > 0 ? `${creditUsed.toFixed(1)} / ${creditLimit.toFixed(0)}` : '-';
+    const checked = selectedAssignedIds.has(a.ID) ? 'checked' : '';
 
     const fmtTime = v => v ? new Date(v).toLocaleString('zh-CN', {hour12:false, month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'}) : '-';
 
     return `<tr>
+      <td data-label="选择"><input type="checkbox" class="k-checkbox" ${checked} onchange="toggleAssignedSelect(${a.ID}, this.checked)"></td>
       <td data-label="ID" style="color:#999">${a.ID}</td>
       <td data-label="邮箱" class="account-email-cell">${a.Email || '-'}</td>
       <td data-label="健康状态">${healthBadge(a.Status)}</td>
@@ -893,6 +897,13 @@ async function loadAssignedAccounts(page = 1) {
     </tr>`;
   }).join('');
   renderPagination('assignedPagination', r.data.total, 15, page, loadAssignedAccounts);
+  updateAssignedBatchBtn();
+  // 更新全选框状态
+  const selectAll = document.getElementById('selectAllAssigned');
+  if (selectAll) {
+    const checkboxes = tbody.querySelectorAll('input[type="checkbox"]');
+    selectAll.checked = checkboxes.length > 0 && [...checkboxes].every(cb => cb.checked);
+  }
 }
 
 function selectAssignedStatus(value, text) {
@@ -913,6 +924,70 @@ function resetAssignedFilters() {
   document.querySelectorAll('#assignedStatusDropdown .k-dropdown-item').forEach(item => item.classList.remove('selected'));
   document.querySelector('#assignedStatusDropdown .k-dropdown-item:first-child')?.classList.add('selected');
   loadAssignedAccounts(1);
+}
+
+// 切换单个已分配账号选择
+function toggleAssignedSelect(id, checked) {
+  if (checked) {
+    selectedAssignedIds.add(id);
+  } else {
+    selectedAssignedIds.delete(id);
+  }
+  updateAssignedBatchBtn();
+  // 同步全选框状态
+  const checkboxes = document.querySelectorAll('#assignedBody input[type="checkbox"]');
+  const selectAll = document.getElementById('selectAllAssigned');
+  if (selectAll) {
+    selectAll.checked = checkboxes.length > 0 && [...checkboxes].every(cb => cb.checked);
+  }
+}
+
+// 全选/取消全选已分配账号
+function toggleSelectAllAssigned(checked) {
+  const checkboxes = document.querySelectorAll('#assignedBody input[type="checkbox"]');
+  checkboxes.forEach(cb => {
+    cb.checked = checked;
+    const row = cb.closest('tr');
+    const idCell = row.querySelector('td:nth-child(2)');
+    if (idCell) {
+      const id = parseInt(idCell.textContent);
+      if (checked) {
+        selectedAssignedIds.add(id);
+      } else {
+        selectedAssignedIds.delete(id);
+      }
+    }
+  });
+  updateAssignedBatchBtn();
+}
+
+// 更新批量删除按钮显示
+function updateAssignedBatchBtn() {
+  const btn = document.getElementById('batchDeleteAssignedBtn');
+  const count = document.getElementById('selectedAssignedCount');
+  if (btn && count) {
+    count.textContent = selectedAssignedIds.size;
+    btn.style.display = selectedAssignedIds.size > 0 ? '' : 'none';
+  }
+}
+
+// 批量删除已分配账号
+async function batchDeleteAssignedAccounts() {
+  if (selectedAssignedIds.size === 0) return;
+  if (!confirm(`确认删除选中的 ${selectedAssignedIds.size} 个已分配账号？`)) return;
+
+  const r = await api('POST', '/admin/accounts/batch-delete', { ids: [...selectedAssignedIds] });
+  if (r.code === 0) {
+    showToast(`成功删除 ${r.data?.deleted || selectedAssignedIds.size} 个账号`, 'success');
+    selectedAssignedIds.clear();
+    updateAssignedBatchBtn();
+    const selectAll = document.getElementById('selectAllAssigned');
+    if (selectAll) selectAll.checked = false;
+    loadAssignedAccounts(1);
+    loadStats();
+  } else {
+    showToast('批量删除失败：' + (r.message || r.msg || '未知错误'), 'error');
+  }
 }
 
 // 一键清空已分配账号（高危操作，双重确认）

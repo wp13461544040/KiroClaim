@@ -164,7 +164,6 @@ func main() {
 	}
 
 	handler.StartAutoUpdateScheduler()
-	handler.StartCleanupScheduler()  // 启动定期清理任务
 
 	go func() {
 		hup := make(chan os.Signal, 1)

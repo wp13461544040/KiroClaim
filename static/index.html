@@ -204,6 +204,17 @@
           <div class="k-card-header">
             <span class="k-card-title">已分配账号</span>
             <div style="display:flex; gap:8px">
+              <div class="k-dropdown" id="exportAssignedDropdown">
+                <div class="k-dropdown-trigger ui-btn ui-btn-secondary ui-btn-sm" onclick="toggleDropdown('exportAssignedDropdown')" style="min-width:auto">导出</div>
+                <div class="k-dropdown-menu" style="min-width:160px">
+                  <div class="k-dropdown-label">导出选中</div>
+                  <div class="k-dropdown-item" onclick="exportAssignedAccounts('json', 'selected')">JSON (选中账号)</div>
+                  <div class="k-dropdown-divider"></div>
+                  <div class="k-dropdown-label">导出全部</div>
+                  <div class="k-dropdown-item" onclick="exportAssignedAccounts('json', 'all')">JSON (全部)</div>
+                </div>
+              </div>
+              <button class="ui-btn ui-btn-danger ui-btn-sm" id="batchDeleteAssignedBtn" style="display:none" onclick="batchDeleteAssignedAccounts()">批量删除 (<span id="selectedAssignedCount">0</span>)</button>
               <button class="ui-btn ui-btn-danger ui-btn-sm" onclick="doClearAssignedAccounts()">一键清空</button>
             </div>
           </div>
@@ -227,6 +238,7 @@
               <table>
                 <thead>
                   <tr>
+                    <th style="width:40px"><input type="checkbox" class="k-checkbox" id="selectAllAssigned" onchange="toggleSelectAllAssigned(this.checked)"></th>
                     <th>ID</th>
                     <th>邮箱地址</th>
                     <th>健康状态</th>
@@ -253,10 +265,12 @@
             <div style="display:flex; gap:8px">
               <div class="k-dropdown" id="exportCardDropdown">
                 <div class="k-dropdown-trigger ui-btn ui-btn-secondary ui-btn-sm" onclick="toggleDropdown('exportCardDropdown')" style="min-width:auto">导出</div>
-                <div class="k-dropdown-menu" style="min-width:120px">
-                  <div class="k-dropdown-item" onclick="exportCards('txt')">TXT</div>
-                  <div class="k-dropdown-item" onclick="exportCards('csv')">CSV</div>
-                  <div class="k-dropdown-item" onclick="exportCards('xlsx')">XLSX</div>
+                <div class="k-dropdown-menu" style="min-width:160px">
+                  <div class="k-dropdown-label">导出选中</div>
+                  <div class="k-dropdown-item" onclick="exportCards('json', 'selected')">JSON (选中卡密)</div>
+                  <div class="k-dropdown-divider"></div>
+                  <div class="k-dropdown-label">导出全部</div>
+                  <div class="k-dropdown-item" onclick="exportCards('json', 'all')">JSON (全部)</div>
                 </div>
               </div>
               <button class="ui-btn ui-btn-danger ui-btn-sm" id="batchDeleteCardsBtn" style="display:none" onclick="batchDeleteCards()">批量删除 (<span id="selectedCardCount">0</span>)</button>
@@ -616,9 +630,9 @@
   <script src="/static/js/auth.js"></script>
   <script src="/static/js/api.js"></script>
   <script src="/static/js/dashboard.js?v=0.2.5"></script>
-  <script src="/static/js/accounts.js?v=0.2.4"></script>
+  <script src="/static/js/accounts.js?v=0.2.5"></script>
   <script src="/static/js/cards.js?v=0.2.1-beta"></script>
-  <script src="/static/js/export.js?v=0.2.4"></script>
+  <script src="/static/js/export.js?v=0.2.7"></script>
   <script src="/static/js/logs.js"></script>
   <script src="/static/js/settings.js"></script>
   <script src="/static/js/commerce-admin-loader.js"></script>
