@@ -8,7 +8,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X github.com/huey1in/KiroClaim/utils.AppVersion=${VERSION}" -o /kiroclaim .
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X github.com/wp13461544040/KiroClaim/utils.AppVersion=${VERSION}" -o /kiroclaim .
 
 FROM alpine:3.20
 
