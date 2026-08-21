@@ -105,13 +105,7 @@ func main() {
 	{
 		api.POST("/activate", captchaMw, minDelayMw, idempotentMw, handler.Activate)
 		api.GET("/status", captchaMw, minDelayMw, handler.Status)
-		api.GET("/shop/products", handler.PublicShopProducts)
-		api.POST("/shop/orders", idempotentMw, handler.CreateShopOrder)
-		api.POST("/shop/orders/query", handler.QueryShopOrder)
-		api.POST("/shop/orders/proof", handler.SubmitShopPaymentProof)
 	}
-	r.POST("/api/shop/callback/:channelId", handler.ShopPaymentCallback)
-	r.GET("/api/shop/callback/:channelId", handler.ShopPaymentCallback)
 
 	r.GET("/token/:code", middleware.RateLimitMiddleware(apiLimiter), captchaMw, minDelayMw, handler.GetToken)
 
@@ -151,16 +145,6 @@ func main() {
 		admin.POST("/settings/reload", handler.ReloadSettingsHandler)
 		admin.GET("/version", handler.AdminVersion)
 		admin.POST("/version/update", handler.AdminVersionUpdate)
-
-		admin.GET("/commerce/channels", handler.AdminCommerceChannels)
-		admin.POST("/commerce/channels", handler.AdminCommerceChannels)
-		admin.DELETE("/commerce/channels/:id", handler.AdminCommerceChannelDelete)
-		admin.GET("/commerce/orders", handler.AdminCommerceOrders)
-		admin.GET("/commerce/orders/:orderNo", handler.AdminCommerceOrderDetail)
-		admin.POST("/commerce/orders/:orderNo/review", handler.AdminCommerceReview)
-		admin.GET("/commerce/proofs/:proofId/:index", handler.AdminCommerceProof)
-		admin.GET("/commerce/settings", handler.AdminCommerceSettings)
-		admin.POST("/commerce/settings", handler.AdminCommerceSettings)
 	}
 
 	handler.StartAutoUpdateScheduler()
@@ -199,7 +183,7 @@ func main() {
 }
 
 func registerPageRoutes(r gin.IRoutes) {
-	r.GET("/", func(c *gin.Context) { c.File("./static/shop.html") })
+	r.GET("/", func(c *gin.Context) { c.File("./static/index.html") })
 	r.GET("/admin", func(c *gin.Context) { c.File("./static/index.html") })
 	r.GET("/setup", func(c *gin.Context) { c.File("./static/setup.html") })
 	r.GET("/redeem", func(c *gin.Context) { c.File("./static/redeem.html") })

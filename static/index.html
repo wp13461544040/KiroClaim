@@ -29,6 +29,9 @@
         <div id="loginError" class="login-error"></div>
         <button type="button" id="loginBtn" class="login-btn" onclick="doLogin()">登 录</button>
       </div>
+      <div class="login-footer" style="position:fixed;bottom:10px;left:0;right:0;text-align:center;font-size:12px;color:#999;">
+        <span>ICP备案号：</span><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer" style="color:#666;text-decoration:none;">沪ICP备2026040917号-1</a>
+      </div>
     </div>
   </div>
 
@@ -52,7 +55,6 @@
         <div class="nav-item" data-tab="assigned" title="已分配" onclick="switchTab('assigned', this)"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M16 11l2 2 4-4"></path></svg></span><span class="nav-label">已分配</span></div>
         <div class="nav-item" data-tab="cards" title="卡密管理" onclick="switchTab('cards', this)"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path><path d="M13 5v2"></path><path d="M13 17v2"></path><path d="M13 11v2"></path></svg></span><span class="nav-label">卡密管理</span></div>
         <div class="nav-item" data-tab="logs" title="操作日志" onclick="switchTab('logs', this)"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg></span><span class="nav-label">操作日志</span></div>
-        <div class="nav-item" data-tab="commerce-orders" title="商城订单" onclick="openCommerceTab('commerce-orders', this)"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h12v18H6z"></path><path d="M9 7h6M9 11h6M9 15h4"></path></svg></span><span class="nav-label">商城订单</span></div>
         <div class="nav-item" data-tab="settings" title="系统设置" onclick="switchTab('settings', this)"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5z"></path><path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.08 1.65V21a2 2 0 0 1-4 0v-.09A1.8 1.8 0 0 0 8.8 19.26a1.8 1.8 0 0 0-1.98.36l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.8 1.8 0 0 0 4.35 15a1.8 1.8 0 0 0-1.65-1.08H2.6a2 2 0 0 1 0-4h.09A1.8 1.8 0 0 0 4.35 8a1.8 1.8 0 0 0-.36-1.98l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.8 1.8 0 0 0 8.8 3.55 1.8 1.8 0 0 0 9.88 1.9V1.8a2 2 0 0 1 4 0v.09a1.8 1.8 0 0 0 1.08 1.65 1.8 1.8 0 0 0 1.98-.36l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.8 1.8 0 0 0 19.4 8c.17.63.66 1.08 1.25 1.08h.75a2 2 0 0 1 0 4h-.75A1.8 1.8 0 0 0 19.4 15z"></path></svg></span><span class="nav-label">系统设置</span></div>
       </nav>
       <div class="sidebar-footer">
@@ -373,13 +375,11 @@
         </div>
       </div>
 
-      <div class="tab-panel" id="tab-commerce-orders"><div id="commerceOrdersMount"><div class="k-card"><div class="k-card-body">正在加载商城订单...</div></div></div></div>
-
       <!-- 系统设置面板 -->
       <div class="tab-panel" id="tab-settings">
         <div class="k-card">
           <div class="k-card-header">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="k-card-title">系统设置</span><span style="color:var(--text-muted)">/</span><button type="button" data-settings-category="base" onclick="switchSettingsCategory('base')" style="border:0;background:none;padding:0;color:var(--text-main);font:inherit;font-size:13px;cursor:pointer">基础与安全</button><span style="color:var(--text-muted)">/</span><button type="button" data-settings-category="logging" onclick="switchSettingsCategory('logging')" style="border:0;background:none;padding:0;color:var(--text-muted);font:inherit;font-size:13px;cursor:pointer">日志与更新</button><span style="color:var(--text-muted)">/</span><button type="button" data-settings-category="commerce" onclick="switchSettingsCategory('commerce')" style="border:0;background:none;padding:0;color:var(--text-muted);font:inherit;font-size:13px;cursor:pointer">商城与支付</button><span style="color:var(--text-muted)">/</span><button type="button" data-settings-category="delivery" onclick="switchSettingsCategory('delivery')" style="border:0;background:none;padding:0;color:var(--text-muted);font:inherit;font-size:13px;cursor:pointer">存储与通知</button></div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="k-card-title">系统设置</span><span style="color:var(--text-muted)">/</span><button type="button" data-settings-category="base" onclick="switchSettingsCategory('base')" style="border:0;background:none;padding:0;color:var(--text-main);font:inherit;font-size:13px;cursor:pointer">基础与安全</button><span style="color:var(--text-muted)">/</span><button type="button" data-settings-category="logging" onclick="switchSettingsCategory('logging')" style="border:0;background:none;padding:0;color:var(--text-muted);font:inherit;font-size:13px;cursor:pointer">日志与更新</button><span style="color:var(--text-muted)">/</span><button type="button" data-settings-category="delivery" onclick="switchSettingsCategory('delivery')" style="border:0;background:none;padding:0;color:var(--text-muted);font:inherit;font-size:13px;cursor:pointer">存储与通知</button></div>
             <button id="settingsSaveBtn" class="ui-btn ui-btn-primary ui-btn-sm" onclick="saveCurrentSettingsCategory()">保存配置</button>
           </div>
           <div class="k-card-body" id="unifiedSettingsBody">
@@ -503,8 +503,6 @@
             <div id="settingsResult" style="margin-top:18px"></div>
           </div>
         </div>
-        <div id="commerceChannelsMount"></div>
-        <div id="commerceSettingsMount"></div>
       </div>
 
     </div>
