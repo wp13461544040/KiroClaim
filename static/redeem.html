@@ -23,10 +23,10 @@
 
       <div class="info">
         <svg class="info-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
-        <span>输入购买时获得的卡密提取凭证，首次使用将自动激活�?/span>
+        <span>输入购买时获得的卡密提取凭证，首次使用将自动激活</span>
       </div>
 
-      <label class="field-label" for="inp-get">卡密序列�?/label>
+      <label class="field-label" for="inp-get">卡密序列</label>
       <input type="text" class="input" id="inp-get" placeholder="KIRO-XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="off" spellcheck="false">
 
       <button class="btn" id="btn-get" onclick="reqGet()">
@@ -80,8 +80,8 @@
         _captcha.enabled = true;
         _captcha.siteKey = d.data.siteKey;
         if (!looksLikeTurnstileSiteKey(_captcha.siteKey)) {
-          setCaptchaState('error', '人机验证 Site Key 配置异常，请在后台填�?Cloudflare Turnstile Site Key');
-          _captcha.error = '人机验证配置异常，请联系管理�?;
+          setCaptchaState('error', '人机验证 Site Key 配置异常，请在后台填写Cloudflare Turnstile Site Key');
+          _captcha.error = '人机验证配置异常，请联系管理员';
           return;
         }
         setCaptchaState('loading', '正在加载人机验证...');
@@ -119,7 +119,7 @@
         box.innerHTML =
           '<div class="turnstile-state">' +
             '<span class="turnstile-error-icon" aria-hidden="true">!</span>' +
-            '<span>' + esc(message || '人机验证加载失败，请刷新后重�?) + '</span>' +
+            '<span>' + esc(message || '人机验证加载失败，请刷新后重试') + '</span>' +
           '</div>';
       }
     }
@@ -142,12 +142,12 @@
             },
             'expired-callback': function() {
               _captcha.tokenGet = '';
-              _captcha.error = '人机验证已过期，请重新完成验�?;
+              _captcha.error = '人机验证已过期，请重新完成验';
             },
           });
           setCaptchaState('ready');
         } catch (e) {
-          _captcha.error = '人机验证加载失败，请检查后�?Turnstile Site Key';
+          _captcha.error = '人机验证加载失败，请检查后Turnstile Site Key';
           setCaptchaState('error', _captcha.error);
         }
       };
@@ -322,7 +322,7 @@
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      btn.textContent = '已下�?;
+      btn.textContent = '已下载';
       btn.classList.add('done');
       setTimeout(function() { btn.textContent = '下载 JSON'; btn.classList.remove('done'); }, 2000);
     }
@@ -428,7 +428,7 @@
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      btn.textContent = '已下�?;
+      btn.textContent = '已下载';
       btn.classList.add('done');
       setTimeout(function() { btn.textContent = '下载 JSON'; btn.classList.remove('done'); }, 2000);
     }
@@ -557,7 +557,7 @@
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      btn.textContent = '已下�?;
+      btn.textContent = '已下载';
       btn.classList.add('done');
       setTimeout(function() { btn.textContent = '下载 JSON'; btn.classList.remove('done'); }, 2000);
     }
@@ -623,7 +623,7 @@
     function renderAccountPager(total, totalPages) {
       if (totalPages <= 1) return '';
       const buttons = [];
-      buttons.push('<button class="pager-btn" ' + (_accountPage <= 1 ? 'disabled' : '') + ' onclick="changeAccountPage(' + (_accountPage - 1) + ')">上一�?/button>');
+      buttons.push('<button class="pager-btn" ' + (_accountPage <= 1 ? 'disabled' : '') + ' onclick="changeAccountPage(' + (_accountPage - 1) + ')">上一页</button>');
       for (let i = 1; i <= totalPages; i++) {
         if (i === 1 || i === totalPages || Math.abs(i - _accountPage) <= 1) {
           buttons.push('<button class="pager-btn' + (i === _accountPage ? ' active' : '') + '" onclick="changeAccountPage(' + i + ')">' + i + '</button>');
@@ -631,8 +631,8 @@
           buttons.push('<span class="pager-info">...</span>');
         }
       }
-      buttons.push('<button class="pager-btn" ' + (_accountPage >= totalPages ? 'disabled' : '') + ' onclick="changeAccountPage(' + (_accountPage + 1) + ')">下一�?/button>');
-      return '<div class="account-pager">' + buttons.join('') + '<span class="pager-info">�?' + total + ' �?/span></div>';
+      buttons.push('<button class="pager-btn" ' + (_accountPage >= totalPages ? 'disabled' : '') + ' onclick="changeAccountPage(' + (_accountPage + 1) + ')">下一页</button>');
+      return '<div class="account-pager">' + buttons.join('') + '<span class="pager-info">共' + total + ' 页</span></div>';
     }
 
     function changeAccountPage(page) {
@@ -656,7 +656,7 @@
         document.body.removeChild(ta);
       }
       if (ok) {
-        btn.textContent = '已复制到剪贴�?;
+        btn.textContent = '已复制到剪贴板';
         btn.classList.add('copied');
         setTimeout(function() { btn.textContent = originalLabel; btn.classList.remove('copied'); }, 2000);
       } else {
@@ -680,7 +680,7 @@
         document.body.removeChild(ta);
       }
       if (ok) {
-        btn.textContent = '已复�?;
+        btn.textContent = '已复制';
         btn.classList.add('copied');
         setTimeout(function() { btn.textContent = originalLabel; btn.classList.remove('copied'); }, 2000);
       } else {
