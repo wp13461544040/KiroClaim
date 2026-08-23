@@ -761,9 +761,9 @@ async function batchDeleteAccounts() {
   }
 }
 
-// 一键清理所有已封禁账号
+// 一键清理所有已封禁账号（只清理未分配的）
 async function deleteBannedAccounts() {
-  if (!confirm('此操作会先刷新所有账号状态，然后删除确认为「已封禁」的账号。\n\n确认继续？')) return;
+  if (!confirm('此操作会先刷新未分配账号的状态，然后删除确认为「已封禁」的账号。\n\n注意：已分配的账号不会被清理。\n\n确认继续？')) return;
   
   showToast('正在刷新账号状态...', 'info');
   
@@ -778,9 +778,9 @@ async function deleteBannedAccounts() {
   }
 }
 
-// 手动清理额度已用账号
+// 手动清理额度已用账号（只清理未分配的）
 async function cleanupUsedCreditAccounts() {
-  if (!confirm('此操作会将额度已用的账号标记为「额度已用」状态并移至已分配池。\n\n确认继续？')) return;
+  if (!confirm('此操作会将未分配的、额度已用的账号标记为「额度已用」状态并移至已分配池。\n\n注意：已分配的账号不会被清理。\n\n确认继续？')) return;
   
   const r = await api('POST', '/admin/accounts/cleanup-used-credit');
   if (r.code === 0) {

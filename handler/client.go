@@ -382,6 +382,13 @@ func popMultipleAccounts(n int, subscription string) ([]*model.Account, error) {
 		accounts = append(accounts, &acc)
 	}
 
+	// 如果已有足够的账号，直接返回
+	if len(accounts) >= n {
+		return accounts[:n], nil
+	}
+
+	// 批量并发健康检查未检查的账号
+	unchecked := make([]model.Account, 0)
 	for i := range candidates {
 		if len(accounts) >= n {
 			break
@@ -390,39 +397,90 @@ func popMultipleAccounts(n int, subscription string) ([]*model.Account, error) {
 		if candidate.LastCheckedAt != nil && candidate.LastCheckedAt.After(freshCutoff) {
 			continue
 		}
-		result := checkAccountHealth(candidate)
-		updates := buildHealthUpdates(result, time.Now())
-		if err := persistHealthUpdates(candidate.ID, updates); err != nil {
-			continue
-		}
-		if result.errMsg != "" {
-			continue
-		}
+		unchecked = append(unchecked, candidate)
+	}
 
-		candidate.AccessToken = result.newToken
-		candidate.RefreshToken = result.newRefresh
-		candidate.Email = result.email
-		candidate.Subscription = result.subscription
-		candidate.CreditUsed = result.creditUsed
-		candidate.CreditLimit = result.creditLimit
-		if result.provider != "" {
-			candidate.Provider = result.provider
+	if len(unchecked) == 0 {
+		if len(accounts) >= n {
+			return accounts[:n], nil
 		}
-		candidate.Status = result.status
-		if !isDispatchable(&candidate, subscription) {
-			continue
+		return nil, gorm.ErrRecordNotFound
+	}
+
+	// 并发检查账号健康状态
+	type checkedAccount struct {
+		account model.Account
+		valid   bool
+	}
+	
+	resultChan := make(chan checkedAccount, len(unchecked))
+	localLimit := currentUpstreamCheckConcurrency()
+	if localLimit <= 0 {
+		localLimit = 6
+	}
+	sem := make(chan struct{}, localLimit)
+	var wg sync.WaitGroup
+
+	for _, candidate := range unchecked {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(acc model.Account) {
+			defer func() { <-sem; wg.Done() }()
+			
+			result := checkAccountHealth(acc)
+			updates := buildHealthUpdates(result, time.Now())
+			if err := persistHealthUpdates(acc.ID, updates); err != nil {
+				resultChan <- checkedAccount{account: acc, valid: false}
+				return
+			}
+			if result.errMsg != "" {
+				resultChan <- checkedAccount{account: acc, valid: false}
+				return
+			}
+
+			acc.AccessToken = result.newToken
+			acc.RefreshToken = result.newRefresh
+			acc.Email = result.email
+			acc.Subscription = result.subscription
+			acc.CreditUsed = result.creditUsed
+			acc.CreditLimit = result.creditLimit
+			if result.provider != "" {
+				acc.Provider = result.provider
+			}
+			acc.Status = result.status
+			
+			if !isDispatchable(&acc, subscription) {
+				resultChan <- checkedAccount{account: acc, valid: false}
+				return
+			}
+			if !verifyDispatchable(acc.AccessToken) {
+				resultChan <- checkedAccount{account: acc, valid: false}
+				return
+			}
+			
+			resultChan <- checkedAccount{account: acc, valid: true}
+		}(candidate)
+	}
+
+	go func() {
+		wg.Wait()
+		close(resultChan)
+	}()
+
+	// 收集有效账号
+	for checked := range resultChan {
+		if checked.valid {
+			accounts = append(accounts, &checked.account)
+			if len(accounts) >= n {
+				break
+			}
 		}
-		if !verifyDispatchable(candidate.AccessToken) {
-			continue
-		}
-		acc := candidate
-		accounts = append(accounts, &acc)
 	}
 
 	if len(accounts) < n {
 		return nil, gorm.ErrRecordNotFound
 	}
-	return accounts, nil
+	return accounts[:n], nil
 }
 
 func buildAccountResp(a *model.Account) gin.H {
@@ -609,18 +667,21 @@ func streamFillTokenAccounts(c *gin.Context, item tokenStreamCard, needed int, i
 	now := time.Now()
 	sent := 0
 	accountIDStrs := make([]string, 0, needed)
-	for sent < needed {
-		account, err := popAccount(0, item.card.Subscription)
-		if err != nil {
-			streamTokenEvent(c, "fail", gin.H{
-				"status":  http.StatusServiceUnavailable,
-				"message": "账号池账号不足: " + item.code,
-				"reason":  "account_pool_shortage",
-				"partial": sent,
-			})
-			return false, sent
-		}
-
+	
+	// 批量获取所需数量的账号，避免重复调用 popAccount
+	accounts, err := popMultipleAccounts(needed, item.card.Subscription)
+	if err != nil || len(accounts) == 0 {
+		streamTokenEvent(c, "fail", gin.H{
+			"status":  http.StatusServiceUnavailable,
+			"message": "账号池账号不足: " + item.code,
+			"reason":  "account_pool_shortage",
+			"partial": sent,
+		})
+		return false, sent
+	}
+	
+	// 批量处理账号
+	for _, account := range accounts {
 		reserved := database.DB.Model(&model.Account{}).
 			Where("id = ? AND used = ?", account.ID, false).
 			Updates(map[string]interface{}{"used": true, "used_at": now})

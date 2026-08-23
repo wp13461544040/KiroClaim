@@ -444,7 +444,8 @@ func BatchDeleteAccounts(c *gin.Context) {
 // POST /admin/accounts/delete-by-status
 // Body: { "status": "suspended" }
 // 按状态批量删除账号，常用于清理封禁账号。
-// 删除前会先刷新所有账号的健康状态，确保基于最新状态执行删除。
+// 只删除未分配（used = false）的账号，已分配账号不受影响。
+// 删除前会先刷新所有未分配账号的健康状态，确保基于最新状态执行删除。
 func DeleteAccountsByStatus(c *gin.Context) {
 	var req struct {
 		Status string `json:"status" binding:"required"`
@@ -459,9 +460,9 @@ func DeleteAccountsByStatus(c *gin.Context) {
 		return
 	}
 
-	// 先获取所有账号进行健康检查
+	// 只获取未分配的账号进行健康检查，已分配账号不处理
 	var allAccounts []model.Account
-	if err := database.DB.Find(&allAccounts).Error; err != nil {
+	if err := database.DB.Where("used = ?", false).Find(&allAccounts).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "查询账号失败: " + err.Error()})
 		return
 	}
@@ -497,13 +498,13 @@ func DeleteAccountsByStatus(c *gin.Context) {
 	close(jobs)
 	wg.Wait()
 
-	// 刷新完成后，查询最新的封禁账号并删除
-	result := database.DB.Unscoped().Where("status = ?", req.Status).Delete(&model.Account{})
+	// 刷新完成后，查询最新的封禁账号并删除（只删除未分配的）
+	result := database.DB.Unscoped().Where("status = ? AND used = ?", req.Status, false).Delete(&model.Account{})
 	if result.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": result.Error.Error()})
 		return
 	}
-	AddOpLogWithCtx(c, "delete", "批量删除 "+req.Status+" 状态账号 "+strconv.FormatInt(result.RowsAffected, 10)+" 个（已刷新状态）", "admin")
+	AddOpLogWithCtx(c, "delete", "批量删除未分配的 "+req.Status+" 状态账号 "+strconv.FormatInt(result.RowsAffected, 10)+" 个（已刷新状态）", "admin")
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已删除", "data": gin.H{"deleted": result.RowsAffected}})
 }
 

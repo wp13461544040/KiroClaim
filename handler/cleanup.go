@@ -11,8 +11,10 @@ import (
 )
 
 // CleanupUsedCreditAccountsManual 手动触发清理（用于管理后台）
+// 只清理未分配（used = false）的账号
 func CleanupUsedCreditAccountsManual() (int, error) {
 	var accounts []model.Account
+	// 只清理未分配的账号，已分配账号不受影响
 	err := database.DB.Where("used = ? AND credit_used > ? AND status = ?",
 		false, 0, model.AccountStatusActive).Find(&accounts).Error
 
