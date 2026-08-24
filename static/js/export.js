@@ -87,12 +87,10 @@ async function exportAccounts(format, exportType) {
   // 导出为 JSON 格式（与导入格式保持一致）
   var jsonData = list.map(function(a) {
     return {
-      refreshToken: a.RefreshToken || '',
       accessToken: a.AccessToken || '',
+      refreshToken: a.RefreshToken || '',
       clientId: a.ClientId || '',
-      clientSecret: a.ClientSecret || '',
-      provider: a.Provider || '',
-      region: a.Region || ''
+      clientSecret: a.ClientSecret || ''
     };
   });
   var jsonStr = JSON.stringify(jsonData, null, 2);
@@ -151,12 +149,10 @@ async function exportAssignedAccounts(format, exportType) {
   // 导出为 JSON 格式（与未分配账号格式一致）
   var jsonData = list.map(function(a) {
     return {
-      refreshToken: a.RefreshToken || '',
       accessToken: a.AccessToken || '',
+      refreshToken: a.RefreshToken || '',
       clientId: a.ClientId || '',
-      clientSecret: a.ClientSecret || '',
-      provider: a.Provider || '',
-      region: a.Region || ''
+      clientSecret: a.ClientSecret || ''
     };
   });
   var jsonStr = JSON.stringify(jsonData, null, 2);
