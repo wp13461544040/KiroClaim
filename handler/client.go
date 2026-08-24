@@ -303,15 +303,9 @@ func popAccount(excludeID uint, subscription string) (*model.Account, error) {
 func buildTokenEntry(a *model.Account) gin.H {
 	return gin.H{
 		"accessToken":  a.AccessToken,
+		"refreshToken": a.RefreshToken,
 		"clientId":     a.ClientId,
 		"clientSecret": a.ClientSecret,
-		"creditLimit":  a.CreditLimit,
-		"creditUsed":   a.CreditUsed,
-		"email":        a.Email,
-		"provider":     a.Provider,
-		"refreshToken": a.RefreshToken,
-		"region":       a.Region,
-		"subscription": a.Subscription,
 	}
 }
 
