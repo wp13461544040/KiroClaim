@@ -232,6 +232,7 @@ async function exportCards(format, exportType) {
 // 显示自定义导出数量模态框
 function showExportCustomModal() {
   document.getElementById('exportCustomModal').style.display = 'flex';
+  document.getElementById('exportCustomCount').value = '10';
   document.getElementById('exportCustomCount').focus();
 }
 
@@ -240,7 +241,7 @@ function closeExportCustomModal() {
   document.getElementById('exportCustomModal').style.display = 'none';
 }
 
-// 执行自定义数量导出
+// 执行自定义数量导出（先选中再导出）
 async function doExportCustom() {
   const countInput = document.getElementById('exportCustomCount');
   const count = parseInt(countInput.value);
@@ -268,7 +269,7 @@ async function doExportCustom() {
   
   const r = await api('GET', url);
   if (r.code !== 0 || !r.data || !r.data.list) {
-    showToast('导出失败：' + (r.message || '未知错误'), 'error');
+    showToast('获取数据失败：' + (r.message || '未知错误'), 'error');
     return;
   }
   
@@ -278,20 +279,20 @@ async function doExportCustom() {
     return;
   }
   
-  const dateStr = new Date().toISOString().slice(0, 10);
+  // 先清除所有选中
+  selectedAccountIds.clear();
   
-  // 导出为 JSON 格式
-  const jsonData = list.map(function(a) {
-    return {
-      accessToken: a.AccessToken || '',
-      refreshToken: a.RefreshToken || '',
-      clientId: a.ClientId || '',
-      clientSecret: a.ClientSecret || ''
-    };
+  // 自动选中要导出的账号
+  list.forEach(function(a) {
+    selectedAccountIds.add(a.ID);
   });
   
-  const jsonStr = JSON.stringify(jsonData, null, 2);
-  downloadFile(jsonStr, 'accounts_' + dateStr + '_' + list.length + '.json', 'application/json;charset=utf-8');
+  // 更新界面选中状态
+  updateAccountBatchBtn();
   
-  showToast(`导出账号成功，共 ${list.length} 条`, 'success');
+  // 刷新当前页面以显示选中状态
+  const currentPage = parseInt(new URLSearchParams(window.location.search).get('page')) || 1;
+  await loadAccounts(currentPage);
+  
+  showToast(`已选中 ${list.length} 个账号，请点击"导出"按钮中的"JSON (选中账号)"完成导出`, 'success', 5000);
 }

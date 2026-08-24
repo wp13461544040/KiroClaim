@@ -511,7 +511,7 @@
 
   <!-- 自定义导出数量模态框 -->
   <div class="modal-overlay" id="exportCustomModal">
-    <div class="modal-content" style="max-width: 400px;">
+    <div class="modal-content" style="max-width: 450px;">
       <div class="modal-header">
         <span class="modal-title">自定义导出数量</span>
         <button type="button" class="modal-close" aria-label="关闭" title="关闭" onclick="closeExportCustomModal()">&times;</button>
@@ -520,13 +520,16 @@
         <div style="margin-bottom: 20px;">
           <label style="display:block; margin-bottom: 8px; font-size:13px; color: var(--text-muted);">导出数量</label>
           <input class="k-input" type="number" id="exportCustomCount" value="10" min="1" max="10000" placeholder="输入要导出的账号数量">
-          <div style="margin-top: 8px; font-size: 12px; color: #666;">
-            按当前筛选条件，从前往后导出指定数量的账号
+          <div style="margin-top: 12px; padding: 10px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; font-size: 12px; color: #0c4a6e;">
+            <strong>操作说明：</strong><br>
+            1. 按当前筛选条件，从前往后选中指定数量的账号<br>
+            2. 自动在界面上勾选这些账号<br>
+            3. 然后点击"导出"→"JSON (选中账号)"完成导出
           </div>
         </div>
         
         <div style="display:flex; gap:12px">
-          <button class="ui-btn ui-btn-primary" onclick="doExportCustom()">确定导出</button>
+          <button class="ui-btn ui-btn-primary" onclick="doExportCustom()">确定选中</button>
           <button class="ui-btn ui-btn-secondary" onclick="closeExportCustomModal()">取消</button>
         </div>
       </div>
