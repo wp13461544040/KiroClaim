@@ -141,6 +141,7 @@
                   <div class="k-dropdown-divider"></div>
                   <div class="k-dropdown-label">导出全部</div>
                   <div class="k-dropdown-item" onclick="exportAccounts('json', 'all')">JSON (全部)</div>
+                  <div class="k-dropdown-item" onclick="showExportCustomModal()">JSON (自定义数量)</div>
                 </div>
               </div>
               <button class="ui-btn ui-btn-danger ui-btn-sm" id="batchDeleteAccountsBtn" style="display:none" onclick="batchDeleteAccounts()">批量删除 (<span id="selectedAccountCount">0</span>)</button>
@@ -505,6 +506,30 @@
         </div>
       </div>
 
+    </div>
+  </div>
+
+  <!-- 自定义导出数量模态框 -->
+  <div class="modal-overlay" id="exportCustomModal">
+    <div class="modal-content" style="max-width: 400px;">
+      <div class="modal-header">
+        <span class="modal-title">自定义导出数量</span>
+        <button type="button" class="modal-close" aria-label="关闭" title="关闭" onclick="closeExportCustomModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="margin-bottom: 20px;">
+          <label style="display:block; margin-bottom: 8px; font-size:13px; color: var(--text-muted);">导出数量</label>
+          <input class="k-input" type="number" id="exportCustomCount" value="10" min="1" max="10000" placeholder="输入要导出的账号数量">
+          <div style="margin-top: 8px; font-size: 12px; color: #666;">
+            按当前筛选条件，从前往后导出指定数量的账号
+          </div>
+        </div>
+        
+        <div style="display:flex; gap:12px">
+          <button class="ui-btn ui-btn-primary" onclick="doExportCustom()">确定导出</button>
+          <button class="ui-btn ui-btn-secondary" onclick="closeExportCustomModal()">取消</button>
+        </div>
+      </div>
     </div>
   </div>
 

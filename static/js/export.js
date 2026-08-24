@@ -228,3 +228,70 @@ async function exportCards(format, exportType) {
 
   showToast(`导出${description}卡密成功，共 ${list.length} 张`, 'success');
 }
+
+// 显示自定义导出数量模态框
+function showExportCustomModal() {
+  document.getElementById('exportCustomModal').style.display = 'flex';
+  document.getElementById('exportCustomCount').focus();
+}
+
+// 关闭自定义导出数量模态框
+function closeExportCustomModal() {
+  document.getElementById('exportCustomModal').style.display = 'none';
+}
+
+// 执行自定义数量导出
+async function doExportCustom() {
+  const countInput = document.getElementById('exportCustomCount');
+  const count = parseInt(countInput.value);
+  
+  if (!count || count < 1) {
+    showToast('请输入有效的导出数量（至少为1）', 'error');
+    return;
+  }
+  
+  if (count > 10000) {
+    showToast('单次导出数量不能超过 10000', 'error');
+    return;
+  }
+  
+  closeExportCustomModal();
+  
+  // 构造查询 URL（按当前筛选条件）
+  let url = '/admin/accounts?used=false';
+  if (accountStatusFilter) url += '&status=' + accountStatusFilter;
+  if (accountSubscriptionFilter) url += '&subscription=' + encodeURIComponent(accountSubscriptionFilter);
+  if (accountKeyword) url += '&keyword=' + encodeURIComponent(accountKeyword);
+  
+  // 只获取指定数量
+  url += '&page=1&size=' + count;
+  
+  const r = await api('GET', url);
+  if (r.code !== 0 || !r.data || !r.data.list) {
+    showToast('导出失败：' + (r.message || '未知错误'), 'error');
+    return;
+  }
+  
+  const list = r.data.list;
+  if (!list.length) {
+    showToast('没有可导出的数据', 'info');
+    return;
+  }
+  
+  const dateStr = new Date().toISOString().slice(0, 10);
+  
+  // 导出为 JSON 格式
+  const jsonData = list.map(function(a) {
+    return {
+      accessToken: a.AccessToken || '',
+      refreshToken: a.RefreshToken || '',
+      clientId: a.ClientId || '',
+      clientSecret: a.ClientSecret || ''
+    };
+  });
+  
+  const jsonStr = JSON.stringify(jsonData, null, 2);
+  downloadFile(jsonStr, 'accounts_' + dateStr + '_' + list.length + '.json', 'application/json;charset=utf-8');
+  
+  showToast(`导出账号成功，共 ${list.length} 条`, 'success');
+}
