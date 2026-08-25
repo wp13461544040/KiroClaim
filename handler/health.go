@@ -164,8 +164,7 @@ func isRetryableHealthUpdateError(err error) bool {
 }
 
 // verifyDispatchable 发货前预检：现场调用 ListAvailableModels，确认账号 token 可用。
-// 返回 true 才允许把账号派发给卡密；超时或非 200/403 都视为不可发货。
-// 注意：403表示用户无ListAvailableModels权限，但账号本身可用，因此也视为可发货。
+// 返回 true 才允许把账号派发给卡密；超时或非 200 都视为不可发货。
 func verifyDispatchable(accessToken string) bool {
 	if accessToken == "" {
 		return false
@@ -181,8 +180,7 @@ func verifyDispatchable(accessToken string) bool {
 	}
 	client := &http.Client{Timeout: time.Duration(timeoutSec) * time.Second}
 	status, _ := probeListModels(client, accessToken)
-	// 200或403都认为账号可用（403只是无权限调用此API）
-	return status == http.StatusOK || status == http.StatusForbidden
+	return status == http.StatusOK
 }
 
 // buildHealthUpdates 构建健康检查结果的更新字段。
@@ -219,9 +217,9 @@ func buildHealthUpdates(r healthResult, now time.Time) map[string]interface{} {
 // checkAccountHealth 按 Kiro 流程执行三步检查：
 //  1. 刷新 accessToken（按凭证特征尝试端点，并用成功端点回写 provider）
 //  2. GET getUsageLimits 拉取 email / subscription / credit
-//  3. POST ListAvailableModels 检测账号可用性（403视为可用）
+//  3. POST ListAvailableModels 拉取账号可用模型
 //
-// Step 1 和 Step 2 收到 403 判定为封号；Step 3 的 403 视为正常。
+// 任何一步收到 HTTP 403 都判定为封号。
 func checkAccountHealth(a model.Account) healthResult {
 	if a.RefreshToken == "" {
 		return healthResult{status: model.AccountStatusSuspended, errMsg: "缺少 refreshToken"}
@@ -269,11 +267,9 @@ func checkAccountHealth(a model.Account) healthResult {
 	}
 
 	// Step 3: ListAvailableModels
-	// 注意：部分账号可能无权限调用此API(403)，但账号本身可用，因此403也标记为Active
 	if status, detail := probeListModels(httpClient, accessToken); status == http.StatusForbidden {
-		// 403表示无权限，但不代表账号被封禁
 		return healthResult{
-			status:       model.AccountStatusActive,
+			status:       model.AccountStatusSuspended,
 			newToken:     accessToken,
 			newRefresh:   newRefresh,
 			provider:     provider,
@@ -281,9 +277,9 @@ func checkAccountHealth(a model.Account) healthResult {
 			subscription: usage.subscription,
 			creditUsed:   usage.creditUsed,
 			creditLimit:  usage.creditLimit,
+			errMsg:       "ListAvailableModels 403: " + detail,
 		}
 	} else if status != http.StatusOK {
-		// 其他非200错误记录但仍标记为Active
 		return healthResult{
 			status:       model.AccountStatusActive,
 			newToken:     accessToken,
