@@ -596,15 +596,9 @@ func firstString(obj map[string]interface{}, paths ...[]string) string {
 // Step 3: 可用模型探测。
 
 func probeListModels(client *http.Client, accessToken string) (int, string) {
-	// 使用 app.kiro.dev 端点，CBOR 协议
-	// 请求体：固定 profileArn（默认 profile）
-	body := []byte("\xa2jcsrfTokenx\x00jprofileArnxAarn:aws:codewhisperer:us-east-1:638616132270:profile/AAAACCCCXXXX")
-	req, _ := http.NewRequest("POST", "https://app.kiro.dev/service/KiroWebPortalService/operation/ListAvailableModels", bytes.NewReader(body))
+	req, _ := http.NewRequest("GET", "https://q.us-east-1.amazonaws.com/ListAvailableModels?origin=AI_EDITOR", nil)
 	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/cbor")
-	req.Header.Set("Accept", "application/cbor")
-	req.Header.Set("smithy-protocol", "rpc-v2-cbor")
-	req.Header.Set("x-amz-user-agent", "aws-sdk-js/1.0.0 ua/2.1 os/Windows lang/js")
+	req.Header.Set("Accept", "application/json")
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, err.Error()

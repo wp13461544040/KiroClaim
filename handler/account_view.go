@@ -352,13 +352,9 @@ func firstExistingNumber(m map[string]interface{}, keys ...string) float64 {
 }
 
 func fetchAvailableModels(client *http.Client, accessToken string) (gin.H, int, string) {
-	body := []byte("\xa2jcsrfTokenx\x00jprofileArnxAarn:aws:codewhisperer:us-east-1:638616132270:profile/AAAACCCCXXXX")
-	req, _ := http.NewRequest("POST", "https://app.kiro.dev/service/KiroWebPortalService/operation/ListAvailableModels", bytes.NewReader(body))
+	req, _ := http.NewRequest("GET", "https://q.us-east-1.amazonaws.com/ListAvailableModels?origin=AI_EDITOR", nil)
 	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/cbor")
-	req.Header.Set("Accept", "application/cbor")
-	req.Header.Set("smithy-protocol", "rpc-v2-cbor")
-	req.Header.Set("x-amz-user-agent", "aws-sdk-js/1.0.0 ua/2.1 os/Windows lang/js")
+	req.Header.Set("Accept", "application/json")
 
 	resp, err := client.Do(req)
 	if err != nil {
