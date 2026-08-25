@@ -267,9 +267,12 @@ func checkAccountHealth(a model.Account) healthResult {
 	}
 
 	// Step 3: ListAvailableModels
+	// 注意：部分账号可能没有权限调用此API(403)，但账号本身可用
+	// 因此403不应标记为Suspended，只记录警告信息
 	if status, detail := probeListModels(httpClient, accessToken); status == http.StatusForbidden {
+		// 403表示无权限，但不代表账号被封禁，仍标记为Active
 		return healthResult{
-			status:       model.AccountStatusSuspended,
+			status:       model.AccountStatusActive,
 			newToken:     accessToken,
 			newRefresh:   newRefresh,
 			provider:     provider,
@@ -277,7 +280,7 @@ func checkAccountHealth(a model.Account) healthResult {
 			subscription: usage.subscription,
 			creditUsed:   usage.creditUsed,
 			creditLimit:  usage.creditLimit,
-			errMsg:       "ListAvailableModels 403: " + detail,
+			errMsg:       "ListAvailableModels 403 (无权限，但账号可用): " + detail,
 		}
 	} else if status != http.StatusOK {
 		return healthResult{
