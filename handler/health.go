@@ -214,10 +214,9 @@ func buildHealthUpdates(r healthResult, now time.Time) map[string]interface{} {
 	return updates
 }
 
-// checkAccountHealth 按 Kiro 流程执行三步检查：
+// checkAccountHealth 按 Kiro 流程执行两步检查：
 //  1. 刷新 accessToken（按凭证特征尝试端点，并用成功端点回写 provider）
 //  2. GET getUsageLimits 拉取 email / subscription / credit
-//  3. GET ListAvailableModels 拉取账号可用模型
 //
 // 任何一步收到 HTTP 403 都判定为封号。
 func checkAccountHealth(a model.Account) healthResult {
@@ -266,35 +265,7 @@ func checkAccountHealth(a model.Account) healthResult {
 		}
 	}
 
-	// Step 3: ListAvailableModels
-	// 注意：部分账号可能没有权限调用此API(403)，但账号本身可用
-	// 因此403不应标记为Suspended，只记录警告信息
-	if status, detail := probeListModels(httpClient, accessToken); status == http.StatusForbidden {
-		// 403表示无权限，但不代表账号被封禁，仍标记为Active
-		return healthResult{
-			status:       model.AccountStatusActive,
-			newToken:     accessToken,
-			newRefresh:   newRefresh,
-			provider:     provider,
-			email:        usage.email,
-			subscription: usage.subscription,
-			creditUsed:   usage.creditUsed,
-			creditLimit:  usage.creditLimit,
-			errMsg:       "ListAvailableModels 403 (无权限，但账号可用): " + detail,
-		}
-	} else if status != http.StatusOK {
-		return healthResult{
-			status:       model.AccountStatusActive,
-			newToken:     accessToken,
-			newRefresh:   newRefresh,
-			provider:     provider,
-			email:        usage.email,
-			subscription: usage.subscription,
-			creditUsed:   usage.creditUsed,
-			creditLimit:  usage.creditLimit,
-			errMsg:       fmt.Sprintf("ListAvailableModels HTTP %d: %s", status, detail),
-		}
-	}
+	// Step 3 已移除（ListAvailableModels 检测）
 
 	return healthResult{
 		status:       model.AccountStatusActive,
