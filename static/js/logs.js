@@ -18,13 +18,15 @@ var actionLabels = {
 // 加载日志列表
 async function loadLogs(page) {
   if (!page) page = 1;
-  var url = '/admin/oplogs?page=' + page + '&size=20';
+  var size = getPageSize('logs', 20);
+  var url = '/admin/oplogs?page=' + page + '&size=' + size;
   if (logActionFilter) url += '&action=' + logActionFilter;
 
   var r = await api('GET', url);
   var tbody = document.getElementById('logsBody');
   if (r.code !== 0 || !r.data.list || !r.data.list.length) {
     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:40px">暂无日志记录</td></tr>';
+    renderPagination('logsPagination', 0, size, 1, loadLogs, 'logs');
     return;
   }
   tbody.innerHTML = r.data.list.map(function(log) {
@@ -41,7 +43,7 @@ async function loadLogs(page) {
       '<td data-label="时间" style="color:#999;font-size:12px">' + new Date(log.CreatedAt).toLocaleString('zh-CN', {hour12:false}) + '</td>' +
     '</tr>';
   }).join('');
-  renderPagination('logsPagination', r.data.total, 20, page, loadLogs);
+  renderPagination('logsPagination', r.data.total, size, page, loadLogs, 'logs');
 }
 
 // 日志类型筛选

@@ -8,7 +8,11 @@ async function loadSettings() {
   }
   var d = r.data;
   document.getElementById('settingMaxUpstreamCheckConcurrency').value = Number.isFinite(Number(d.maxUpstreamCheckConcurrency)) ? Number(d.maxUpstreamCheckConcurrency) : 6;
-  document.getElementById('settingDispatchHealthCheckEnabled').checked = d.dispatchHealthCheckEnabled !== false;
+  document.getElementById('settingDispatchHealthCheckEnabled').checked = !!d.dispatchHealthCheckEnabled;
+  document.getElementById('settingHealthScanEnabled').checked = d.healthScanEnabled !== false;
+  document.getElementById('settingHealthScanIntervalMinutes').value = Number.isFinite(Number(d.healthScanIntervalMinutes)) ? Number(d.healthScanIntervalMinutes) : 30;
+  document.getElementById('settingHealthScanBatchSize').value = Number.isFinite(Number(d.healthScanBatchSize)) ? Number(d.healthScanBatchSize) : 1000;
+  renderHealthScanStatus(d.healthScanStatus);
   document.getElementById('settingRequestTimeoutSeconds').value = Number.isFinite(Number(d.requestTimeoutSeconds)) ? Number(d.requestTimeoutSeconds) : 45;
   document.getElementById('settingRateLimitEnabled').checked = !!d.rateLimitEnabled;
   document.getElementById('settingRateLimitPerMin').value = d.rateLimitPerMin || 30;
@@ -36,10 +40,61 @@ function readIntSetting(id, fallback) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function fmtScanTime(v) {
+  if (!v) return '从未';
+  var t = new Date(v);
+  if (isNaN(t.getTime())) return '从未';
+  return t.toLocaleString('zh-CN', { hour12: false, month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function renderHealthScanStatus(st) {
+  var el = document.getElementById('healthScanStatusText');
+  if (!el) return;
+  if (!st) {
+    el.textContent = '暂无巡检记录';
+    return;
+  }
+
+  var lines = [];
+  lines.push(st.running ? '正在巡检中...' : '空闲');
+  lines.push('上次开始：' + fmtScanTime(st.lastStartedAt));
+  if (st.lastEndedAt) {
+    lines.push('上次结束：' + fmtScanTime(st.lastEndedAt) +
+      '（检查 ' + (st.lastChecked || 0) + ' 个，状态变更 ' + (st.lastFlipped || 0) + ' 个）');
+  }
+
+  var pending = Number(st.pendingTotal) || 0;
+  if (pending > 0) {
+    var batch = readIntSetting('settingHealthScanBatchSize', 1000);
+    var rounds = Math.ceil(pending / Math.max(1, batch));
+    lines.push('待刷新：' + pending + ' 个，按当前每轮数量约需 ' + rounds + ' 轮覆盖一遍');
+  } else {
+    lines.push('待刷新：0 个，号池状态已是最新');
+  }
+
+  if (st.lastError) lines.push('上次错误：' + st.lastError);
+  el.innerHTML = lines.map(function(s) { return escapeHtml(s); }).join('<br>');
+}
+
+async function triggerHealthScan() {
+  var r = await api('POST', '/admin/accounts/health-scan');
+  if (r.code === 0) {
+    showToast(r.message || '巡检已启动', 'success');
+    // 稍等一下再刷新状态，让后台先把 running 标记写上
+    setTimeout(loadSettings, 1200);
+  } else {
+    showToast(r.message || '巡检启动失败', 'error');
+  }
+}
+
 async function saveSettings() {
   var body = {
     maxUpstreamCheckConcurrency: readIntSetting('settingMaxUpstreamCheckConcurrency', 6),
     dispatchHealthCheckEnabled: document.getElementById('settingDispatchHealthCheckEnabled').checked,
+    healthScanEnabled: document.getElementById('settingHealthScanEnabled').checked,
+    healthScanIntervalMinutes: readIntSetting('settingHealthScanIntervalMinutes', 30),
+    healthScanBatchSize: readIntSetting('settingHealthScanBatchSize', 1000),
     requestTimeoutSeconds: readIntSetting('settingRequestTimeoutSeconds', 45),
     rateLimitEnabled: document.getElementById('settingRateLimitEnabled').checked,
     rateLimitPerMin: readIntSetting('settingRateLimitPerMin', 30),
@@ -125,7 +180,7 @@ function initSettingsCategories() {
   var commerceMount=document.getElementById('commerceSettingsMount');
   if(!body||!source||!channelsMount||!commerceMount||!document.getElementById('settingsForm')) { return false; }
   var host=document.createElement('div'); host.id='settingsCategoryHost'; body.insertBefore(host,source);
-  createSettingsPane(host,'base',['settingMaxUpstreamCheckConcurrency','settingDispatchHealthCheckEnabled','settingRequestTimeoutSeconds','settingMinResponseMs','settingRateLimitEnabled','settingRateLimitPerMin','settingLoginFailLimit','settingLoginLockMinutes','settingCaptchaEnabled','settingCaptchaSiteKey','settingCaptchaSecretKey','settingCaptchaFreeCount']);
+  createSettingsPane(host,'base',['settingMaxUpstreamCheckConcurrency','settingDispatchHealthCheckEnabled','settingHealthScanEnabled','settingHealthScanIntervalMinutes','settingHealthScanBatchSize','healthScanStatusText','settingRequestTimeoutSeconds','settingMinResponseMs','settingRateLimitEnabled','settingRateLimitPerMin','settingLoginFailLimit','settingLoginLockMinutes','settingCaptchaEnabled','settingCaptchaSiteKey','settingCaptchaSecretKey','settingCaptchaFreeCount']);
   createSettingsPane(host,'logging',['settingLogFileEnabled','settingLogFilePath','settingLogMaxSizeMB','settingLogMaxBackups','settingLogMaxAgeDays','settingLogCompress','settingAutoUpdateEnabled']);
   var commercePane=createSettingsPane(host,'commerce',['setEnabled','setDefaultExpiry','setManualExpiry']); commercePane.appendChild(channelsMount);
   var deliveryPane=createSettingsPane(host,'delivery',['setStorageType','setLocalPath','setMaxProof','setS3Endpoint','setS3Region','setS3Bucket','setS3Access','setS3Secret','setS3SSL']);

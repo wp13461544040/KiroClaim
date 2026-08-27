@@ -411,9 +411,31 @@
                 <div class="settings-toggle-card">
                   <div>
                     <strong>发货前上游健康检查</strong>
-                    <small>关闭后，发货仅依据数据库中的现有账号状态</small>
+                    <small>关闭后发货只看数据库状态，速度快很多，依赖下方定时巡检保持状态新鲜</small>
                   </div>
-                  <input type="checkbox" class="k-checkbox" id="settingDispatchHealthCheckEnabled" checked>
+                  <input type="checkbox" class="k-checkbox" id="settingDispatchHealthCheckEnabled">
+                </div>
+                <div class="settings-toggle-card">
+                  <div>
+                    <strong>定时健康巡检</strong>
+                    <small>后台周期刷新未分配账号的状态，关闭发货检查时必须开启</small>
+                  </div>
+                  <input type="checkbox" class="k-checkbox" id="settingHealthScanEnabled" checked>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label" for="settingHealthScanIntervalMinutes">巡检间隔（分钟）</label>
+                  <input class="k-input" type="number" id="settingHealthScanIntervalMinutes" min="1" value="30">
+                  <div class="settings-help">每隔多久跑一轮巡检</div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label" for="settingHealthScanBatchSize">每轮巡检数量</label>
+                  <input class="k-input" type="number" id="settingHealthScanBatchSize" min="1" value="1000">
+                  <div class="settings-help">优先检查最久未检查的账号。号池大于该值时需要多轮才能覆盖一遍</div>
+                </div>
+                <div class="settings-field">
+                  <div class="settings-label">巡检状态</div>
+                  <div class="settings-help" id="healthScanStatusText">加载中...</div>
+                  <button type="button" class="ui-btn ui-btn-secondary ui-btn-sm" style="margin-top:8px" onclick="triggerHealthScan()">立即巡检</button>
                 </div>
                 <div class="settings-field">
                   <label class="settings-label" for="settingRequestTimeoutSeconds">上游请求超时（秒）</label>

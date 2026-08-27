@@ -12,7 +12,11 @@ import (
 	"github.com/wp13461544040/KiroClaim/model"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
+
+// 全表扫描时每批读取的账号数量，控制单次驻留内存的实体数量。
+const accountScanBatchSize = 100
 
 // POST /admin/accounts/import
 // Body: JSON 数组，支持直接数组或 accounts 数组。
@@ -150,17 +154,21 @@ func addImportBadDetail(task *ImportTask, row int, reason string) {
 	importTasksMu.Unlock()
 }
 
+// 分批扫描已有 refreshToken，避免账号量大时一次性把全表实体读进内存。
 func loadExistingRefreshTokens() (map[string]struct{}, error) {
-	var existing []model.Account
-	if err := database.DB.Select("refresh_token").Find(&existing).Error; err != nil {
+	tokens := make(map[string]struct{})
+	var batch []model.Account
+	err := database.DB.Model(&model.Account{}).Select("id", "refresh_token").
+		FindInBatches(&batch, accountScanBatchSize, func(tx *gorm.DB, _ int) error {
+			for i := range batch {
+				if batch[i].RefreshToken != "" {
+					tokens[batch[i].RefreshToken] = struct{}{}
+				}
+			}
+			return nil
+		}).Error
+	if err != nil {
 		return nil, err
-	}
-
-	tokens := make(map[string]struct{}, len(existing))
-	for _, a := range existing {
-		if a.RefreshToken != "" {
-			tokens[a.RefreshToken] = struct{}{}
-		}
 	}
 	return tokens, nil
 }
@@ -222,9 +230,17 @@ func processImport(taskID string, accounts []map[string]interface{}) {
 	importTasksMu.RUnlock()
 
 	// 导入只建立流水线 worker，真正的上游请求并发由全局检查池统一控制。
-	concurrency := currentUpstreamCheckConcurrency()
-	if concurrency <= 0 {
-		concurrency = 6
+	//
+	// worker 数要高于限流值：worker 在解析结果、等数据库写入时并不占用上游槽位，
+	// 如果两者相等，每有一个 worker 在做本地工作就有一个上游槽位空转。
+	// 超发几倍让槽位始终有人排队，真实上游并发仍由限流器封顶。
+	limit := currentUpstreamCheckConcurrency()
+	if limit <= 0 {
+		limit = 6
+	}
+	concurrency := limit * 3
+	if concurrency > 64 {
+		concurrency = 64
 	}
 
 	existingTokens, err := loadExistingRefreshTokens()
@@ -361,8 +377,29 @@ func ListAccounts(c *gin.Context) {
 		size = 1000
 	}
 	var total int64
-	var accounts []model.Account
-	q := database.DB.Model(&model.Account{})
+	
+	// 列表专用结构，只查询展示需要的列，避免加载 token 等大字段。
+	// 字段名与 model.Account 保持一致，序列化后的 JSON key 不变，前端无需调整。
+	type AccountListItem struct {
+		ID            uint
+		CreatedAt     time.Time
+		Email         string
+		Status        model.AccountStatus
+		Subscription  string
+		CreditUsed    float64
+		CreditLimit   float64
+		Used          bool
+		UsedAt        *time.Time
+		Provider      string
+		Region        string
+		LastCheckedAt *time.Time
+	}
+	
+	var accounts []AccountListItem
+	q := database.DB.Model(&model.Account{}).Select(
+		"id", "email", "status", "subscription", "credit_used", "credit_limit",
+		"used", "used_at", "provider", "region", "last_checked_at", "created_at",
+	)
 
 	// 按健康状态筛选。
 	if statusFilter != "" {
@@ -460,27 +497,15 @@ func DeleteAccountsByStatus(c *gin.Context) {
 		return
 	}
 
-	// 只获取未分配的账号进行健康检查，已分配账号不处理
-	var allAccounts []model.Account
-	if err := database.DB.Where("used = ?", false).Find(&allAccounts).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "查询账号失败: " + err.Error()})
-		return
-	}
-
-	if len(allAccounts) == 0 {
-		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已删除", "data": gin.H{"deleted": 0}})
-		return
-	}
-
-	// 并发刷新所有账号状态
+	// 并发刷新未分配账号状态，已分配账号不处理。
+	// 使用分批扫描，避免账号量大时把全表实体一次性读进内存。
 	concurrency := currentUpstreamCheckConcurrency()
 	if concurrency <= 0 {
 		concurrency = 6
 	}
 
-	jobs := make(chan model.Account, len(allAccounts))
+	jobs := make(chan model.Account, concurrency*2)
 	var wg sync.WaitGroup
-
 	for i := 0; i < concurrency; i++ {
 		wg.Add(1)
 		go func() {
@@ -492,11 +517,21 @@ func DeleteAccountsByStatus(c *gin.Context) {
 		}()
 	}
 
-	for _, account := range allAccounts {
-		jobs <- account
-	}
+	var batch []model.Account
+	scanErr := database.DB.Where("used = ?", false).
+		FindInBatches(&batch, accountScanBatchSize, func(tx *gorm.DB, _ int) error {
+			for i := range batch {
+				jobs <- batch[i]
+			}
+			return nil
+		}).Error
 	close(jobs)
 	wg.Wait()
+
+	if scanErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "查询账号失败: " + scanErr.Error()})
+		return
+	}
 
 	// 刷新完成后，查询最新的封禁账号并删除（只删除未分配的）
 	result := database.DB.Unscoped().Where("status = ? AND used = ?", req.Status, false).Delete(&model.Account{})
@@ -692,29 +727,18 @@ func AccountSubscriptionStats(c *gin.Context) {
 		TotalCount   int64  `json:"totalCount"`
 	}
 
-	var accounts []model.Account
-	database.DB.Select("subscription, used, status").Find(&accounts)
-
-	statsBySubscription := make(map[string]*SubscriptionStat)
-	for _, a := range accounts {
-		if a.Subscription == "" {
-			continue
-		}
-		stat, ok := statsBySubscription[a.Subscription]
-		if !ok {
-			stat = &SubscriptionStat{Subscription: a.Subscription}
-			statsBySubscription[a.Subscription] = stat
-		}
-		stat.TotalCount++
-		if !a.Used && a.Status == model.AccountStatusActive {
-			stat.UnusedCount++
-		}
+	// 交由数据库做 GROUP BY 聚合，避免把全表读进内存统计。
+	stats := make([]SubscriptionStat, 0, 8)
+	if err := database.DB.Model(&model.Account{}).
+		Select("subscription, COUNT(*) AS total_count, SUM(CASE WHEN used = ? AND status = ? THEN 1 ELSE 0 END) AS unused_count",
+			false, model.AccountStatusActive).
+		Where("subscription != ''").
+		Group("subscription").
+		Scan(&stats).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "统计失败: " + err.Error()})
+		return
 	}
 
-	stats := make([]SubscriptionStat, 0, len(statsBySubscription))
-	for _, stat := range statsBySubscription {
-		stats = append(stats, *stat)
-	}
 	sort.SliceStable(stats, func(i, j int) bool {
 		if stats[i].UnusedCount != stats[j].UnusedCount {
 			return stats[i].UnusedCount > stats[j].UnusedCount

@@ -27,16 +27,16 @@ type Account struct {
 	RefreshToken  string `gorm:"type:text;not null"`
 	ClientId      string `gorm:"type:text"`
 	ClientSecret  string `gorm:"type:text"`
-	Provider      string `gorm:"type:varchar(50)"`
-	Region        string `gorm:"type:varchar(50)"`
-	Used          bool   `gorm:"default:false"`
+	Provider      string `gorm:"type:varchar(50);index:idx_provider"`
+	Region        string `gorm:"type:varchar(50);index:idx_region"`
+	Used          bool   `gorm:"default:false;index:idx_used"`
 	UsedAt        *time.Time
-	Status        AccountStatus `gorm:"type:varchar(20)"`
-	LastCheckedAt *time.Time
-	Email         string  `gorm:"type:varchar(255)"`
-	Subscription  string  `gorm:"type:varchar(50)"`
-	CreditUsed    float64 `gorm:"default:0"`
-	CreditLimit   float64 `gorm:"default:0"`
+	Status        AccountStatus `gorm:"type:varchar(20);index:idx_status"`
+	LastCheckedAt *time.Time    `gorm:"index:idx_last_checked"`
+	Email         string        `gorm:"type:varchar(255);index:idx_email"`
+	Subscription  string        `gorm:"type:varchar(50);index:idx_subscription"`
+	CreditUsed    float64       `gorm:"default:0;index:idx_credit_used"`
+	CreditLimit   float64       `gorm:"default:0"`
 }
 
 func (a *Account) BeforeCreate(tx *gorm.DB) error {

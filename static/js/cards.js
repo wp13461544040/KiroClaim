@@ -54,7 +54,8 @@ async function loadCards(page = 1) {
   cardKeyword = (document.getElementById('cardKeyword')?.value || '').trim();
   const createdFrom = document.getElementById('cardCreatedFrom')?.value || '';
   const createdTo = document.getElementById('cardCreatedTo')?.value || '';
-  let url = `/admin/cards?page=${page}&size=15`;
+  const size = getPageSize('cards', 15);
+  let url = `/admin/cards?page=${page}&size=${size}`;
   if (cardStatusFilter) url += `&status=${cardStatusFilter}`;
   if (cardKeyword) url += `&keyword=${encodeURIComponent(cardKeyword)}`;
   if (createdFrom) url += `&created_from=${createdFrom}`;
@@ -74,6 +75,7 @@ async function loadCards(page = 1) {
   if (r.code === 0 && r.data?.filters) updateCardFilterOptions(r.data.filters);
   if (r.code !== 0 || !r.data?.list?.length) {
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-muted)">无卡密记录</td></tr>';
+    renderPagination('cardsPagination', 0, size, 1, loadCards, 'cards');
     updateCardBatchBtn();
     return;
   }
@@ -99,7 +101,7 @@ async function loadCards(page = 1) {
     </tr>`;
   }).join('');
 
-  renderPagination('cardsPagination', r.data.total, 15, page, loadCards);
+  renderPagination('cardsPagination', r.data.total, size, page, loadCards, 'cards');
   updateCardBatchBtn();
 
   const selectAll = document.getElementById('selectAllCards');

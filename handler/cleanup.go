@@ -11,43 +11,20 @@ import (
 )
 
 // CleanupUsedCreditAccountsManual 手动触发清理（用于管理后台）
-// 只清理未分配（used = false）的账号
+// 只清理未分配（used = false）的账号，已分配账号不受影响。
+// 使用单条批量 UPDATE，避免逐个账号读取再更新。
 func CleanupUsedCreditAccountsManual() (int, error) {
-	var accounts []model.Account
-	// 只清理未分配的账号，已分配账号不受影响
-	err := database.DB.Where("used = ? AND credit_used > ? AND status = ?",
-		false, 0, model.AccountStatusActive).Find(&accounts).Error
-
-	if err != nil {
-		return 0, err
-	}
-
-	if len(accounts) == 0 {
-		return 0, nil
-	}
-
-	now := time.Now()
-	cleanedCount := 0
-
-	for _, account := range accounts {
-		updates := map[string]interface{}{
+	result := database.DB.Model(&model.Account{}).
+		Where("used = ? AND credit_used > ? AND status = ?", false, 0, model.AccountStatusActive).
+		Updates(map[string]interface{}{
 			"status":  model.AccountStatusUsed,
 			"used":    true,
-			"used_at": now,
-		}
-
-		result := database.DB.Model(&model.Account{}).
-			Where("id = ?", account.ID).
-			Updates(updates)
-
-		if result.Error != nil {
-			continue
-		}
-
-		cleanedCount++
+			"used_at": time.Now(),
+		})
+	if result.Error != nil {
+		return 0, result.Error
 	}
-
-	return cleanedCount, nil
+	return int(result.RowsAffected), nil
 }
 
 // CleanupUsedCreditAccountsAPI 手动清理的 HTTP 处理函数

@@ -116,6 +116,7 @@ func main() {
 		admin.POST("/accounts/import", handler.ImportAccounts)
 		admin.GET("/accounts/import/status/:taskId", handler.ImportStatus)
 		admin.GET("/accounts", handler.ListAccounts)
+		admin.GET("/accounts/export", handler.ExportAccounts)
 		admin.GET("/accounts/subscription-stats", handler.AccountSubscriptionStats)
 		admin.GET("/accounts/:id/detail", handler.AccountDetail)
 		admin.GET("/accounts/:id/models", handler.AccountModels)
@@ -127,6 +128,7 @@ func main() {
 		admin.POST("/accounts/clear-assigned", handler.ClearAssignedAccounts)
 		admin.GET("/pool/stats", handler.PoolStats)
 		admin.POST("/accounts/cleanup-used-credit", handler.CleanupUsedCreditAccountsAPI)
+		admin.POST("/accounts/health-scan", handler.TriggerHealthScan)
 
 		admin.POST("/cards/generate", handler.GenerateCards)
 		admin.GET("/cards", handler.ListCards)
@@ -148,6 +150,7 @@ func main() {
 	}
 
 	handler.StartAutoUpdateScheduler()
+	handler.StartHealthScanScheduler()
 
 	go func() {
 		hup := make(chan os.Signal, 1)

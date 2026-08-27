@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func TestPageRoutesUseRootForShopAndAdminForConsole(t *testing.T) {
+func TestPageRoutesServeLoginAtRootAndShopRemoved(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	registerPageRoutes(router)
@@ -18,7 +18,7 @@ func TestPageRoutesUseRootForShopAndAdminForConsole(t *testing.T) {
 		path string
 		want string
 	}{
-		{path: "/", want: "在线购买卡密"},
+		{path: "/", want: "登录"},
 		{path: "/admin", want: "登录"},
 	}
 	for _, test := range tests {
@@ -30,6 +30,7 @@ func TestPageRoutesUseRootForShopAndAdminForConsole(t *testing.T) {
 		}
 	}
 
+	// 商城功能已移除，/shop 不应再注册。
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/shop", nil))
 	if recorder.Code != http.StatusNotFound {

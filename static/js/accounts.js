@@ -13,7 +13,8 @@ async function loadAccounts(page = 1) {
   const createdFrom = document.getElementById('accountCreatedFrom')?.value || '';
   const createdTo = document.getElementById('accountCreatedTo')?.value || '';
   // 账号池强制只看未分配
-  let url = `/admin/accounts?page=${page}&size=15&used=false`;
+  const size = getPageSize('accounts', 15);
+  let url = `/admin/accounts?page=${page}&size=${size}&used=false`;
   if (accountStatusFilter) url += `&status=${accountStatusFilter}`;
   if (accountSubscriptionFilter) url += `&subscription=${encodeURIComponent(accountSubscriptionFilter)}`;
   if (accountKeyword) url += `&keyword=${encodeURIComponent(accountKeyword)}`;
@@ -24,6 +25,8 @@ async function loadAccounts(page = 1) {
   const tbody = document.getElementById('accountsBody');
   if (r.code !== 0 || !r.data.list.length) {
     tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:40px">暂无未分配账号</td></tr>';
+    // 清空分页，避免筛选后无结果时残留上一次的页码
+    renderPagination('accountsPagination', 0, size, 1, loadAccounts, 'accounts');
     updateAccountBatchBtn();
     return;
   }
@@ -59,7 +62,7 @@ async function loadAccounts(page = 1) {
       </td>
     </tr>`;
   }).join('');
-  renderPagination('accountsPagination', r.data.total, 15, page, loadAccounts);
+  renderPagination('accountsPagination', r.data.total, size, page, loadAccounts, 'accounts');
   updateAccountBatchBtn();
   // 更新全选框状态
   const selectAll = document.getElementById('selectAllAccounts');
@@ -851,7 +854,8 @@ let selectedAssignedIds = new Set();
 
 async function loadAssignedAccounts(page = 1) {
   assignedKeyword = (document.getElementById('assignedKeyword')?.value || '').trim();
-  let url = `/admin/accounts?page=${page}&size=15&used=true`;
+  const size = getPageSize('assigned', 15);
+  let url = `/admin/accounts?page=${page}&size=${size}&used=true`;
   if (assignedStatusFilter) url += `&status=${assignedStatusFilter}`;
   if (assignedKeyword) url += `&keyword=${encodeURIComponent(assignedKeyword)}`;
 
@@ -859,6 +863,7 @@ async function loadAssignedAccounts(page = 1) {
   const tbody = document.getElementById('assignedBody');
   if (r.code !== 0 || !r.data.list.length) {
     tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:40px">暂无已分配账号</td></tr>';
+    renderPagination('assignedPagination', 0, size, 1, loadAssignedAccounts, 'assigned');
     updateAssignedBatchBtn();
     return;
   }
@@ -896,7 +901,7 @@ async function loadAssignedAccounts(page = 1) {
       </td>
     </tr>`;
   }).join('');
-  renderPagination('assignedPagination', r.data.total, 15, page, loadAssignedAccounts);
+  renderPagination('assignedPagination', r.data.total, size, page, loadAssignedAccounts, 'assigned');
   updateAssignedBatchBtn();
   // 更新全选框状态
   const selectAll = document.getElementById('selectAllAssigned');

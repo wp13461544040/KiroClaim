@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -17,6 +18,39 @@ import (
 )
 
 var healthUpdateMu sync.Mutex
+
+// 上游请求全部复用同一个 Transport。
+//
+// Go 的 DefaultTransport 每个 host 只保留 2 条空闲连接
+// (DefaultMaxIdleConnsPerHost)，而健康检查会用可配置的并发数反复打同一批
+// 端点（oidc / q.us-east-1 / auth.desktop.kiro.dev）。沿用默认值会让多数
+// 请求在响应结束后就丢掉连接，下一次再付一遍 TCP + TLS 握手的跨区往返。
+// 这里把每 host 的空闲连接数提到远高于常用并发档位，握手成本随之摊掉。
+var upstreamTransport = &http.Transport{
+	Proxy: http.ProxyFromEnvironment,
+	DialContext: (&net.Dialer{
+		Timeout:   10 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}).DialContext,
+	ForceAttemptHTTP2:     true,
+	MaxIdleConns:          256,
+	MaxIdleConnsPerHost:   64,
+	IdleConnTimeout:       90 * time.Second,
+	TLSHandshakeTimeout:   10 * time.Second,
+	ExpectContinueTimeout: 1 * time.Second,
+}
+
+// upstreamHTTPClient 复用全局 Transport，只按调用方的超时构造 Client。
+// Client 本身是轻量结构，连接池挂在 Transport 上，所以复用 Transport 才是关键。
+func upstreamHTTPClient(timeoutSec int) *http.Client {
+	if timeoutSec <= 0 {
+		timeoutSec = 15
+	}
+	return &http.Client{
+		Timeout:   time.Duration(timeoutSec) * time.Second,
+		Transport: upstreamTransport,
+	}
+}
 
 // 辅助解析。
 
@@ -178,7 +212,7 @@ func verifyDispatchable(accessToken string) bool {
 	if timeoutSec <= 0 {
 		timeoutSec = 15
 	}
-	client := &http.Client{Timeout: time.Duration(timeoutSec) * time.Second}
+	client := upstreamHTTPClient(timeoutSec)
 	status, _ := probeListModels(client, accessToken)
 	return status == http.StatusOK
 }
@@ -230,10 +264,7 @@ func checkAccountHealth(a model.Account) healthResult {
 	settingsMu.RLock()
 	timeoutSec := currentSettings.RequestTimeoutSeconds
 	settingsMu.RUnlock()
-	if timeoutSec <= 0 {
-		timeoutSec = 15
-	}
-	httpClient := &http.Client{Timeout: time.Duration(timeoutSec) * time.Second}
+	httpClient := upstreamHTTPClient(timeoutSec)
 
 	// Step 1: refresh
 	accessToken, newRefresh, provider, rStatus, rErr := refreshAccessToken(httpClient, a)

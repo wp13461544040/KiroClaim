@@ -17,6 +17,29 @@ import (
 	"gorm.io/gorm"
 )
 
+// 原子预留账号：只有把 used 从 false 翻成 true 的那次调用才算抢到。
+// 并发派发时靠这一步保证同一账号不会同时发给两张卡密。
+func reserveAccount(id uint) bool {
+	res := database.DB.Model(&model.Account{}).
+		Where("id = ? AND used = ?", id, false).
+		Updates(map[string]interface{}{"used": true, "used_at": time.Now()})
+	return res.Error == nil && res.RowsAffected == 1
+}
+
+// 释放预留：账号最终没有派发出去时归还号池。
+func releaseAccount(id uint) {
+	database.DB.Model(&model.Account{}).Where("id = ?", id).
+		Updates(map[string]interface{}{"used": false, "used_at": nil})
+}
+
+func releaseAccounts(accounts []*model.Account) {
+	for _, acc := range accounts {
+		if acc != nil {
+			releaseAccount(acc.ID)
+		}
+	}
+}
+
 // POST /api/activate
 // Body: { "code": "xxx" }
 func Activate(c *gin.Context) {
@@ -47,18 +70,17 @@ func Activate(c *gin.Context) {
 		}
 		result := database.DB.Model(&model.Card{}).Where("id = ? AND used_at IS NULL", card.ID).Update("used_at", now)
 		if result.RowsAffected == 0 {
-			for _, acc := range accounts {
-				database.DB.Model(acc).Update("used", false)
-			}
+			// 卡密被并发抢先激活，归还刚预留的账号。
+			releaseAccounts(accounts)
 			c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "卡密已被使用"})
 			return
 		}
 
+		// 账号已在 popMultipleAccounts 内部原子预留，这里只做绑定。
 		accountResps := make([]gin.H, 0, len(accounts))
 		accountIDStrs := make([]string, 0, len(accounts))
 		for _, acc := range accounts {
 			database.DB.Create(&model.CardAccount{CardID: card.ID, AccountID: acc.ID})
-			database.DB.Model(acc).Updates(map[string]interface{}{"used": true, "used_at": now})
 			accountResps = append(accountResps, buildAccountResp(acc))
 			accountIDStrs = append(accountIDStrs, strconv.Itoa(int(acc.ID)))
 			database.DB.Create(&model.CardLog{
@@ -87,12 +109,13 @@ func Activate(c *gin.Context) {
 	}
 	result := database.DB.Model(&model.Card{}).Where("id = ? AND used_at IS NULL", card.ID).Updates(updates)
 	if result.RowsAffected == 0 {
-		database.DB.Model(account).Update("used", false)
+		// 卡密被并发抢先激活，归还刚预留的账号。
+		releaseAccount(account.ID)
 		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "卡密已被使用"})
 		return
 	}
+	// 账号已在 popAccount 内部原子预留，这里只做绑定。
 	database.DB.Create(&model.CardAccount{CardID: card.ID, AccountID: account.ID})
-	database.DB.Model(account).Updates(map[string]interface{}{"used": true, "used_at": now})
 
 	AddOpLogWithCtx(c, "activate", "激活卡密 "+req.Code+"，绑定账号 ID:"+strconv.Itoa(int(account.ID))+", IP: "+c.ClientIP(), "client")
 	database.DB.Create(&model.CardLog{
@@ -199,12 +222,18 @@ func popAccount(excludeID uint, subscription string) (*model.Account, error) {
 	if len(candidates) == 0 {
 		return nil, gorm.ErrRecordNotFound
 	}
+
 	if !dispatchHealthCheckEnabled() {
 		for i := range candidates {
-			if isDispatchable(&candidates[i], subscription) {
-				account := candidates[i]
-				return &account, nil
+			if !isDispatchable(&candidates[i], subscription) {
+				continue
 			}
+			// 预留失败说明已被并发请求抢走，换下一个候选。
+			if !reserveAccount(candidates[i].ID) {
+				continue
+			}
+			account := candidates[i]
+			return &account, nil
 		}
 		return nil, gorm.ErrRecordNotFound
 	}
@@ -218,6 +247,9 @@ func popAccount(excludeID uint, subscription string) (*model.Account, error) {
 			continue
 		}
 		if !verifyDispatchable(account.AccessToken) {
+			continue
+		}
+		if !reserveAccount(account.ID) {
 			continue
 		}
 		acc := account
@@ -283,9 +315,17 @@ func popAccount(excludeID uint, subscription string) (*model.Account, error) {
 				if !isDispatchable(&acc, subscription) {
 					return
 				}
+				// 先原子预留再宣告胜出，避免同一账号被并发派发两次。
+				// 预留失败说明已被抢走，让其他候选继续竞争。
+				if !reserveAccount(acc.ID) {
+					return
+				}
 				if found.CompareAndSwap(false, true) {
 					winner <- &checkResult{account: acc}
+					return
 				}
+				// 极少数情况下已有其他账号胜出，退回本次预留避免账号被白占。
+				releaseAccount(acc.ID)
 			}(unchecked[i])
 		}
 		wg.Wait()
@@ -347,21 +387,27 @@ func popMultipleAccounts(n int, subscription string) ([]*model.Account, error) {
 			if !isDispatchable(&candidates[i], subscription) {
 				continue
 			}
+			if !reserveAccount(candidates[i].ID) {
+				continue
+			}
 			account := candidates[i]
 			accounts = append(accounts, &account)
 			if len(accounts) == n {
 				return accounts, nil
 			}
 		}
+		// 凑不齐 n 个，释放已预留的账号避免被白占。
+		releaseAccounts(accounts)
 		return nil, gorm.ErrRecordNotFound
 	}
 
 	accounts := make([]*model.Account, 0, n)
 	freshCutoff := time.Now().Add(-20 * time.Minute)
+
+	// 先挑出"近期检查过"的候选，再并发预检。
+	// 串行预检时每个账号都要单独排一次全局上游队列，多号卡的等待时间会线性累加。
+	fresh := make([]model.Account, 0, len(candidates))
 	for i := range candidates {
-		if len(accounts) >= n {
-			break
-		}
 		candidate := candidates[i]
 		if candidate.LastCheckedAt == nil || !candidate.LastCheckedAt.After(freshCutoff) {
 			continue
@@ -369,11 +415,46 @@ func popMultipleAccounts(n int, subscription string) ([]*model.Account, error) {
 		if !isDispatchable(&candidate, subscription) {
 			continue
 		}
-		if !verifyDispatchable(candidate.AccessToken) {
-			continue
+		fresh = append(fresh, candidate)
+	}
+
+	if len(fresh) > 0 {
+		type freshResult struct {
+			account model.Account
+			ok      bool
 		}
-		acc := candidate
-		accounts = append(accounts, &acc)
+		freshChan := make(chan freshResult, len(fresh))
+		var freshWg sync.WaitGroup
+		for i := range fresh {
+			freshWg.Add(1)
+			go func(acc model.Account) {
+				defer freshWg.Done()
+				if !verifyDispatchable(acc.AccessToken) {
+					freshChan <- freshResult{account: acc}
+					return
+				}
+				if !reserveAccount(acc.ID) {
+					freshChan <- freshResult{account: acc}
+					return
+				}
+				freshChan <- freshResult{account: acc, ok: true}
+			}(fresh[i])
+		}
+		freshWg.Wait()
+		close(freshChan)
+
+		// 凑够 n 个之后仍要排空，把多预留的账号还回池子。
+		for r := range freshChan {
+			if !r.ok {
+				continue
+			}
+			if len(accounts) >= n {
+				releaseAccount(r.account.ID)
+				continue
+			}
+			acc := r.account
+			accounts = append(accounts, &acc)
+		}
 	}
 
 	// 如果已有足够的账号，直接返回
@@ -398,6 +479,7 @@ func popMultipleAccounts(n int, subscription string) ([]*model.Account, error) {
 		if len(accounts) >= n {
 			return accounts[:n], nil
 		}
+		releaseAccounts(accounts)
 		return nil, gorm.ErrRecordNotFound
 	}
 
@@ -447,11 +529,14 @@ func popMultipleAccounts(n int, subscription string) ([]*model.Account, error) {
 				resultChan <- checkedAccount{account: acc, valid: false}
 				return
 			}
-			if !verifyDispatchable(acc.AccessToken) {
+			// 这里不再调用 verifyDispatchable：checkAccountHealth 的 Step 3 就是
+			// ListAvailableModels，刚刚用同一个 accessToken 打过同一个端点，
+			// 且只有 200 才会走到这里。重复探测不增加任何检测强度。
+			if !reserveAccount(acc.ID) {
 				resultChan <- checkedAccount{account: acc, valid: false}
 				return
 			}
-			
+
 			resultChan <- checkedAccount{account: acc, valid: true}
 		}(candidate)
 	}
@@ -461,17 +546,22 @@ func popMultipleAccounts(n int, subscription string) ([]*model.Account, error) {
 		close(resultChan)
 	}()
 
-	// 收集有效账号
+	// 收集有效账号。凑够 n 个后仍需排空 channel，
+	// 把多余的已预留账号释放回池，否则它们会被白占。
 	for checked := range resultChan {
-		if checked.valid {
-			accounts = append(accounts, &checked.account)
-			if len(accounts) >= n {
-				break
-			}
+		if !checked.valid {
+			continue
 		}
+		if len(accounts) >= n {
+			releaseAccount(checked.account.ID)
+			continue
+		}
+		acc := checked.account
+		accounts = append(accounts, &acc)
 	}
 
 	if len(accounts) < n {
+		releaseAccounts(accounts)
 		return nil, gorm.ErrRecordNotFound
 	}
 	return accounts[:n], nil
@@ -658,10 +748,9 @@ func streamFillTokenAccounts(c *gin.Context, item tokenStreamCard, needed int, i
 		return true, 0
 	}
 	clientIP := c.ClientIP()
-	now := time.Now()
 	sent := 0
 	accountIDStrs := make([]string, 0, needed)
-	
+
 	// 批量获取所需数量的账号，避免重复调用 popAccount
 	accounts, err := popMultipleAccounts(needed, item.card.Subscription)
 	if err != nil || len(accounts) == 0 {
@@ -674,16 +763,10 @@ func streamFillTokenAccounts(c *gin.Context, item tokenStreamCard, needed int, i
 		return false, sent
 	}
 	
-	// 批量处理账号
+	// 账号已在 popMultipleAccounts 内部原子预留，这里只做绑定。
 	for _, account := range accounts {
-		reserved := database.DB.Model(&model.Account{}).
-			Where("id = ? AND used = ?", account.ID, false).
-			Updates(map[string]interface{}{"used": true, "used_at": now})
-		if reserved.Error != nil || reserved.RowsAffected == 0 {
-			continue
-		}
 		if err := database.DB.Create(&model.CardAccount{CardID: item.card.ID, AccountID: account.ID}).Error; err != nil {
-			database.DB.Model(account).Updates(map[string]interface{}{"used": false, "used_at": nil})
+			releaseAccount(account.ID)
 			continue
 		}
 
@@ -753,17 +836,16 @@ func processOneCode(c *gin.Context, code string) ([]gin.H, gin.H, int) {
 		}
 		result := database.DB.Model(&model.Card{}).Where("id = ? AND used_at IS NULL", card.ID).Update("used_at", now)
 		if result.RowsAffected == 0 {
-			for _, acc := range accounts {
-				database.DB.Model(acc).Update("used", false)
-			}
+			// 卡密被并发抢先激活，归还刚预留的账号。
+			releaseAccounts(accounts)
 			return nil, gin.H{"code": 1, "message": "卡密已被使用: " + code}, http.StatusBadRequest
 		}
 
+		// 账号已在 popMultipleAccounts 内部原子预留，这里只做绑定。
 		idStrs := make([]string, 0, len(accounts))
 		mods := make([]model.Account, 0, len(accounts))
 		for _, acc := range accounts {
 			database.DB.Create(&model.CardAccount{CardID: card.ID, AccountID: acc.ID})
-			database.DB.Model(acc).Updates(map[string]interface{}{"used": true, "used_at": now})
 			idStrs = append(idStrs, strconv.Itoa(int(acc.ID)))
 			mods = append(mods, *acc)
 			database.DB.Create(&model.CardLog{CardID: card.ID, Code: card.Code, Action: "activate", AccountID: acc.ID, Email: acc.Email, ClientIP: clientIP})
@@ -778,11 +860,12 @@ func processOneCode(c *gin.Context, code string) ([]gin.H, gin.H, int) {
 	}
 	result := database.DB.Model(&model.Card{}).Where("id = ? AND used_at IS NULL", card.ID).Update("used_at", now)
 	if result.RowsAffected == 0 {
-		database.DB.Model(account).Update("used", false)
+		// 卡密被并发抢先激活，归还刚预留的账号。
+		releaseAccount(account.ID)
 		return nil, gin.H{"code": 1, "message": "卡密已被使用: " + code}, http.StatusBadRequest
 	}
+	// 账号已在 popAccount 内部原子预留，这里只做绑定。
 	database.DB.Create(&model.CardAccount{CardID: card.ID, AccountID: account.ID})
-	database.DB.Model(account).Updates(map[string]interface{}{"used": true, "used_at": now})
 	AddOpLogWithCtx(c, "activate", "凭证接口激活卡密 "+code+"，绑定账号 ID:"+strconv.Itoa(int(account.ID))+", IP: "+clientIP, "client")
 	database.DB.Create(&model.CardLog{CardID: card.ID, Code: card.Code, Action: "activate", AccountID: account.ID, Email: account.Email, ClientIP: clientIP})
 	return buildTokenArray(account), nil, 0

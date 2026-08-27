@@ -21,6 +21,9 @@ import (
 type AppSettings struct {
 	MaxUpstreamCheckConcurrency int
 	DispatchHealthCheckEnabled  bool
+	HealthScanEnabled           bool
+	HealthScanIntervalMinutes   int
+	HealthScanBatchSize         int
 	RequestTimeoutSeconds       int
 	RateLimitEnabled            bool
 	RateLimitPerMin             int
@@ -44,6 +47,9 @@ type storedRuntimeSettings struct {
 	MaxUpstreamCheckConcurrency *int    `json:"maxUpstreamCheckConcurrency,omitempty"`
 	MaxImportConcurrency        *int    `json:"maxImportConcurrency,omitempty"`
 	DispatchHealthCheckEnabled  *bool   `json:"dispatchHealthCheckEnabled,omitempty"`
+	HealthScanEnabled           *bool   `json:"healthScanEnabled,omitempty"`
+	HealthScanIntervalMinutes   *int    `json:"healthScanIntervalMinutes,omitempty"`
+	HealthScanBatchSize         *int    `json:"healthScanBatchSize,omitempty"`
 	RequestTimeoutSeconds       *int    `json:"requestTimeoutSeconds,omitempty"`
 	RateLimitEnabled            *bool   `json:"rateLimitEnabled,omitempty"`
 	RateLimitPerMin             *int    `json:"rateLimitPerMin,omitempty"`
@@ -73,8 +79,12 @@ func LoadSettingsFromEnv() {
 	logging := utils.DefaultLoggingConfigFromEnv()
 	s := AppSettings{
 		MaxUpstreamCheckConcurrency: 6,
-		DispatchHealthCheckEnabled:  envBool("DISPATCH_HEALTH_CHECK_ENABLED", true),
-		RequestTimeoutSeconds:       45,
+		// 派发前不再逐个探测上游，账号状态由后台定时巡检维护。
+		DispatchHealthCheckEnabled: envBool("DISPATCH_HEALTH_CHECK_ENABLED", false),
+		HealthScanEnabled:          envBool("HEALTH_SCAN_ENABLED", true),
+		HealthScanIntervalMinutes:  envInt("HEALTH_SCAN_INTERVAL_MINUTES", 30),
+		HealthScanBatchSize:        envInt("HEALTH_SCAN_BATCH_SIZE", 1000),
+		RequestTimeoutSeconds:      45,
 		RateLimitEnabled:            envBool("RATE_LIMIT_ENABLED", true),
 		RateLimitPerMin:             envInt("RATE_LIMIT_PER_MIN", 30),
 		LoginFailLimit:              envInt("LOGIN_FAIL_LIMIT", 5),
@@ -127,6 +137,15 @@ func mergeStoredRuntimeSettings(s *AppSettings, stored storedRuntimeSettings) {
 	}
 	if stored.DispatchHealthCheckEnabled != nil {
 		s.DispatchHealthCheckEnabled = *stored.DispatchHealthCheckEnabled
+	}
+	if stored.HealthScanEnabled != nil {
+		s.HealthScanEnabled = *stored.HealthScanEnabled
+	}
+	if stored.HealthScanIntervalMinutes != nil {
+		s.HealthScanIntervalMinutes = *stored.HealthScanIntervalMinutes
+	}
+	if stored.HealthScanBatchSize != nil {
+		s.HealthScanBatchSize = *stored.HealthScanBatchSize
 	}
 	if stored.RequestTimeoutSeconds != nil {
 		s.RequestTimeoutSeconds = *stored.RequestTimeoutSeconds
@@ -185,6 +204,12 @@ func normalizeSettings(s *AppSettings) {
 	if s.MaxUpstreamCheckConcurrency <= 0 {
 		s.MaxUpstreamCheckConcurrency = 6
 	}
+	if s.HealthScanIntervalMinutes <= 0 {
+		s.HealthScanIntervalMinutes = 30
+	}
+	if s.HealthScanBatchSize <= 0 {
+		s.HealthScanBatchSize = 1000
+	}
 	if s.RequestTimeoutSeconds <= 0 {
 		s.RequestTimeoutSeconds = 45
 	}
@@ -227,6 +252,9 @@ func persistRuntimeSettings(s AppSettings) error {
 	payload := storedRuntimeSettings{
 		MaxUpstreamCheckConcurrency: intPtr(s.MaxUpstreamCheckConcurrency),
 		DispatchHealthCheckEnabled:  boolPtr(s.DispatchHealthCheckEnabled),
+		HealthScanEnabled:           boolPtr(s.HealthScanEnabled),
+		HealthScanIntervalMinutes:   intPtr(s.HealthScanIntervalMinutes),
+		HealthScanBatchSize:         intPtr(s.HealthScanBatchSize),
 		RequestTimeoutSeconds:       intPtr(s.RequestTimeoutSeconds),
 		RateLimitEnabled:            boolPtr(s.RateLimitEnabled),
 		RateLimitPerMin:             intPtr(s.RateLimitPerMin),
@@ -314,6 +342,10 @@ func AdminSettings(c *gin.Context) {
 		"data": gin.H{
 			"maxUpstreamCheckConcurrency": s.MaxUpstreamCheckConcurrency,
 			"dispatchHealthCheckEnabled":  s.DispatchHealthCheckEnabled,
+			"healthScanEnabled":           s.HealthScanEnabled,
+			"healthScanIntervalMinutes":   s.HealthScanIntervalMinutes,
+			"healthScanBatchSize":         s.HealthScanBatchSize,
+			"healthScanStatus":            HealthScanStatus(),
 			"requestTimeoutSeconds":       s.RequestTimeoutSeconds,
 			"rateLimitEnabled":            s.RateLimitEnabled,
 			"rateLimitPerMin":             s.RateLimitPerMin,
@@ -339,6 +371,9 @@ func UpdateAdminSettings(c *gin.Context) {
 	var req struct {
 		MaxUpstreamCheckConcurrency int    `json:"maxUpstreamCheckConcurrency"`
 		DispatchHealthCheckEnabled  bool   `json:"dispatchHealthCheckEnabled"`
+		HealthScanEnabled           bool   `json:"healthScanEnabled"`
+		HealthScanIntervalMinutes   int    `json:"healthScanIntervalMinutes"`
+		HealthScanBatchSize         int    `json:"healthScanBatchSize"`
 		RequestTimeoutSeconds       int    `json:"requestTimeoutSeconds"`
 		RateLimitEnabled            bool   `json:"rateLimitEnabled"`
 		RateLimitPerMin             int    `json:"rateLimitPerMin"`
@@ -401,6 +436,20 @@ func UpdateAdminSettings(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "日志保留天数必须大于 0"})
 		return
 	}
+	if req.HealthScanEnabled {
+		if req.HealthScanIntervalMinutes <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "定时巡检间隔必须大于 0 分钟"})
+			return
+		}
+		if req.HealthScanBatchSize <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "定时巡检每轮数量必须大于 0"})
+			return
+		}
+	}
+	if !req.HealthScanEnabled && !req.DispatchHealthCheckEnabled {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "定时巡检与派发检测不能同时关闭，否则账号状态无法更新，可能把已封禁账号发给用户"})
+		return
+	}
 
 	settingsMu.RLock()
 	s := currentSettings
@@ -408,6 +457,9 @@ func UpdateAdminSettings(c *gin.Context) {
 
 	s.MaxUpstreamCheckConcurrency = req.MaxUpstreamCheckConcurrency
 	s.DispatchHealthCheckEnabled = req.DispatchHealthCheckEnabled
+	s.HealthScanEnabled = req.HealthScanEnabled
+	s.HealthScanIntervalMinutes = req.HealthScanIntervalMinutes
+	s.HealthScanBatchSize = req.HealthScanBatchSize
 	s.RequestTimeoutSeconds = req.RequestTimeoutSeconds
 	s.RateLimitEnabled = req.RateLimitEnabled
 	s.RateLimitPerMin = req.RateLimitPerMin
@@ -497,6 +549,8 @@ func settingsLoggingConfig(s AppSettings) utils.LoggingConfig {
 func updateSecuritySettings(s AppSettings) {
 	_ = utils.ApplyLoggingConfig(settingsLoggingConfig(s))
 	updateUpstreamCheckConcurrency(s.MaxUpstreamCheckConcurrency)
+	// 让巡检循环立即按新的间隔重新计时，而不是等完当前周期。
+	notifyHealthScanSettingsChanged()
 
 	if ApiRateLimiter != nil {
 		if s.RateLimitEnabled && s.RateLimitPerMin > 0 {

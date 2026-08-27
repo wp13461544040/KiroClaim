@@ -3,6 +3,7 @@
 import (
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/wp13461544040/KiroClaim/model"
@@ -18,6 +19,23 @@ var DB *gorm.DB
 
 func WhereKVKey(db *gorm.DB, key string) *gorm.DB {
 	return db.Where(&model.KV{Key: key})
+}
+
+// withSQLitePragmas 把连接级 pragma 追加到 DSN，保证每条新连接都带上这些设置。
+//
+// synchronous 是每连接生效的：连接建立后再执行 PRAGMA 只作用于恰好服务那条语句的
+// 连接，池里其余连接仍是默认的 FULL。journal_mode 写在数据库文件头因此是持久的，
+// busy_timeout 由驱动在每条新连接上默认设为 5000，这两项本来就没问题。
+// 已有 _pragma 参数时原样返回，避免覆盖用户自定义配置。
+func withSQLitePragmas(dsn string) string {
+	if strings.Contains(dsn, "_pragma=") {
+		return dsn
+	}
+	pragmas := "_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)"
+	if strings.Contains(dsn, "?") {
+		return dsn + "&" + pragmas
+	}
+	return dsn + "?" + pragmas
 }
 
 // Init 初始化数据库连接。
@@ -46,7 +64,10 @@ func Init(dsn string) {
 		if dsn == "" {
 			dsn = "app.db"
 		}
-		dialector = sqlite.Open(dsn)
+		// pragma 必须写进 DSN。busy_timeout / synchronous 是每连接生效的，
+		// 连接建立后再执行 PRAGMA 只作用于恰好服务那条语句的连接，
+		// 之后新建的连接会退回 SQLite 默认值（busy_timeout=0）并在并发写时立刻报 database is locked。
+		dialector = sqlite.Open(withSQLitePragmas(dsn))
 		log.Printf("使用 SQLite 数据库: %s", dsn)
 
 	default:
@@ -71,10 +92,15 @@ func Init(dsn string) {
 	}
 
 	if dbType == "sqlite" {
-		DB.Exec("PRAGMA journal_mode=WAL")
-		DB.Exec("PRAGMA synchronous=NORMAL")
-		DB.Exec("PRAGMA busy_timeout=5000")
-		log.Println("SQLite 已开启 WAL 模式 (journal_mode=WAL, synchronous=NORMAL, busy_timeout=5s)")
+		// WAL 下读不阻塞写，所以不把连接数收到 1，否则列表和导出的并发读也会排队。
+		// 写冲突由 busy_timeout 加应用层的 healthUpdateMu 兜住。
+		// 这里只固定空闲连接数，避免高并发时反复建连（每条新连接都要重跑一遍 pragma）。
+		if sqlDB, err := DB.DB(); err == nil {
+			sqlDB.SetMaxOpenConns(8)
+			sqlDB.SetMaxIdleConns(8)
+			sqlDB.SetConnMaxLifetime(0)
+		}
+		log.Println("SQLite 已配置: journal_mode=WAL, synchronous=NORMAL, busy_timeout=5s, MaxOpen=8, MaxIdle=8")
 	}
 	if err := dropDeprecatedCommerceColumns(DB); err != nil {
 		log.Fatalf("清理废弃商城字段失败: %v", err)

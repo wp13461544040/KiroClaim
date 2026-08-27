@@ -36,6 +36,42 @@ async function fetchAllPages(baseUrl, pageSize) {
   return all;
 }
 
+// 直接下载后端流式导出的文件。
+// 账号导出必须走这个通道：列表接口不返回凭证字段，只有导出端点才带 token。
+// 后端边查边写 response，一次请求拿完，不再按页累积到内存。
+async function downloadExport(path, fallbackName) {
+  var opts = { method: 'GET', headers: {} };
+  if (typeof ADMIN_TOKEN !== 'undefined' && ADMIN_TOKEN) {
+    opts.headers['Authorization'] = 'Bearer ' + ADMIN_TOKEN;
+  }
+
+  var resp = await fetch(path, opts);
+  if (resp.status === 401 || resp.status === 403) {
+    localStorage.removeItem('adminToken');
+    if (typeof ADMIN_TOKEN !== 'undefined') ADMIN_TOKEN = null;
+    if (typeof showLogin === 'function') showLogin();
+    throw new Error('Token 已失效');
+  }
+  if (!resp.ok) {
+    throw new Error('导出失败：HTTP ' + resp.status);
+  }
+
+  // 用 blob 直接落盘，不把内容解析成 JS 对象再序列化一遍
+  var blob = await resp.blob();
+  var name = fallbackName;
+  var disposition = resp.headers.get('Content-Disposition') || '';
+  var matched = disposition.match(/filename=([^;]+)/);
+  if (matched) name = matched[1].trim().replace(/^"|"$/g, '');
+
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+  return blob.size;
+}
+
 // 导出账号，仅支持 JSON 格式
 // exportType: 'selected' 导出选中账号, 'all' 导出全部筛选结果
 async function exportAccounts(format, exportType) {
@@ -45,58 +81,31 @@ async function exportAccounts(format, exportType) {
     return;
   }
 
-  let list = [];
-  let description = '';
+  var url = '/admin/accounts/export?used=false';
+  var description = '全部';
 
   if (exportType === 'selected') {
-    // 导出选中的账号
     if (selectedAccountIds.size === 0) {
       showToast('请先选择要导出的账号', 'info');
       return;
     }
-    
-    // 构造查询 URL，使用 IDs 筛选
-    const ids = Array.from(selectedAccountIds);
-    const url = '/admin/accounts?used=false&size=1000';
-    const r = await api('GET', url);
-    
-    if (r.code === 0 && r.data && r.data.list) {
-      // 过滤出选中的账号
-      list = r.data.list.filter(a => ids.includes(a.ID));
-    }
-    
+    // 按 ID 精确导出，不再受"只取第一页"的限制
+    url += '&ids=' + Array.from(selectedAccountIds).join(',');
     description = '选中的';
   } else {
-    // 导出全部账号（按筛选条件）
-    var url = '/admin/accounts?used=false';
     if (accountStatusFilter) url += '&status=' + accountStatusFilter;
     if (accountSubscriptionFilter) url += '&subscription=' + encodeURIComponent(accountSubscriptionFilter);
     if (accountKeyword) url += '&keyword=' + encodeURIComponent(accountKeyword);
-
-    list = await fetchAllPages(url, 500);
-    description = '全部';
-  }
-
-  if (!list.length) {
-    showToast('没有可导出的数据', 'info');
-    return;
   }
 
   var dateStr = new Date().toISOString().slice(0, 10);
-
-  // 导出为 JSON 格式（与导入格式保持一致）
-  var jsonData = list.map(function(a) {
-    return {
-      accessToken: a.AccessToken || '',
-      refreshToken: a.RefreshToken || '',
-      clientId: a.ClientId || '',
-      clientSecret: a.ClientSecret || ''
-    };
-  });
-  var jsonStr = JSON.stringify(jsonData, null, 2);
-  downloadFile(jsonStr, 'accounts_' + dateStr + '.json', 'application/json;charset=utf-8');
-
-  showToast(`导出${description}账号成功，共 ${list.length} 条`, 'success');
+  try {
+    showToast('正在导出，请稍候...', 'info');
+    await downloadExport(url, 'accounts_' + dateStr + '.json');
+    showToast('导出' + description + '账号完成', 'success');
+  } catch (e) {
+    showToast(e.message || '导出失败', 'error');
+  }
 }
 
 // 导出已分配账号，仅支持 JSON 格式
@@ -108,57 +117,29 @@ async function exportAssignedAccounts(format, exportType) {
     return;
   }
 
-  let list = [];
-  let description = '';
+  var url = '/admin/accounts/export?used=true';
+  var description = '全部';
 
   if (exportType === 'selected') {
-    // 导出选中的已分配账号
     if (selectedAssignedIds.size === 0) {
       showToast('请先选择要导出的账号', 'info');
       return;
     }
-    
-    // 构造查询 URL
-    const ids = Array.from(selectedAssignedIds);
-    const url = '/admin/accounts?used=true&size=1000';
-    const r = await api('GET', url);
-    
-    if (r.code === 0 && r.data && r.data.list) {
-      // 过滤出选中的账号
-      list = r.data.list.filter(a => ids.includes(a.ID));
-    }
-    
+    url += '&ids=' + Array.from(selectedAssignedIds).join(',');
     description = '选中的';
   } else {
-    // 导出全部已分配账号（按筛选条件）
-    var url = '/admin/accounts?used=true';
     if (assignedStatusFilter) url += '&status=' + assignedStatusFilter;
     if (assignedKeyword) url += '&keyword=' + encodeURIComponent(assignedKeyword);
-
-    list = await fetchAllPages(url, 500);
-    description = '全部';
-  }
-
-  if (!list.length) {
-    showToast('没有可导出的数据', 'info');
-    return;
   }
 
   var dateStr = new Date().toISOString().slice(0, 10);
-
-  // 导出为 JSON 格式（与未分配账号格式一致）
-  var jsonData = list.map(function(a) {
-    return {
-      accessToken: a.AccessToken || '',
-      refreshToken: a.RefreshToken || '',
-      clientId: a.ClientId || '',
-      clientSecret: a.ClientSecret || ''
-    };
-  });
-  var jsonStr = JSON.stringify(jsonData, null, 2);
-  downloadFile(jsonStr, 'assigned_accounts_' + dateStr + '.json', 'application/json;charset=utf-8');
-
-  showToast(`导出${description}已分配账号成功，共 ${list.length} 条`, 'success');
+  try {
+    showToast('正在导出，请稍候...', 'info');
+    await downloadExport(url, 'assigned_accounts_' + dateStr + '.json');
+    showToast('导出' + description + '已分配账号完成', 'success');
+  } catch (e) {
+    showToast(e.message || '导出失败', 'error');
+  }
 }
 
 
@@ -257,42 +238,19 @@ async function doExportCustom() {
   }
   
   closeExportCustomModal();
-  
-  // 构造查询 URL（按当前筛选条件）
-  let url = '/admin/accounts?used=false';
+
+  // 按当前筛选条件导出指定数量，由后端 limit 截断，直接下载
+  var url = '/admin/accounts/export?used=false&limit=' + count;
   if (accountStatusFilter) url += '&status=' + accountStatusFilter;
   if (accountSubscriptionFilter) url += '&subscription=' + encodeURIComponent(accountSubscriptionFilter);
   if (accountKeyword) url += '&keyword=' + encodeURIComponent(accountKeyword);
-  
-  // 只获取指定数量
-  url += '&page=1&size=' + count;
-  
-  const r = await api('GET', url);
-  if (r.code !== 0 || !r.data || !r.data.list) {
-    showToast('获取数据失败：' + (r.message || '未知错误'), 'error');
-    return;
+
+  var dateStr = new Date().toISOString().slice(0, 10);
+  try {
+    showToast('正在导出，请稍候...', 'info');
+    await downloadExport(url, 'accounts_' + dateStr + '.json');
+    showToast('导出完成，最多 ' + count + ' 条', 'success');
+  } catch (e) {
+    showToast(e.message || '导出失败', 'error');
   }
-  
-  const list = r.data.list;
-  if (!list.length) {
-    showToast('没有可导出的数据', 'info');
-    return;
-  }
-  
-  // 先清除所有选中
-  selectedAccountIds.clear();
-  
-  // 自动选中要导出的账号
-  list.forEach(function(a) {
-    selectedAccountIds.add(a.ID);
-  });
-  
-  // 更新界面选中状态
-  updateAccountBatchBtn();
-  
-  // 刷新当前页面以显示选中状态
-  const currentPage = parseInt(new URLSearchParams(window.location.search).get('page')) || 1;
-  await loadAccounts(currentPage);
-  
-  showToast(`已选中 ${list.length} 个账号，请点击"导出"按钮中的"JSON (选中账号)"完成导出`, 'success', 5000);
 }

@@ -20,10 +20,8 @@ func accountRequestClient() *http.Client {
 	settingsMu.RLock()
 	timeoutSec := currentSettings.RequestTimeoutSeconds
 	settingsMu.RUnlock()
-	if timeoutSec <= 0 {
-		timeoutSec = 15
-	}
-	return &http.Client{Timeout: time.Duration(timeoutSec) * time.Second}
+	// 复用全局上游 Transport 的连接池，避免每次请求重新握手。
+	return upstreamHTTPClient(timeoutSec)
 }
 
 func loadAccountForView(c *gin.Context) (*model.Account, bool) {
