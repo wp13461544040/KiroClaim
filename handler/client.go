@@ -40,6 +40,50 @@ func releaseAccounts(accounts []*model.Account) {
 	}
 }
 
+// reservationGuard 跟踪"已预留但归属尚未确定"的账号。
+//
+// popAccount / popMultipleAccounts 会先把账号原子预留（used = true）再返回，
+// 这样并发请求不会拿到同一个号。但预留之后到写入卡密绑定之前，中间任何提前返回
+// （客户端断连、写库失败、panic）都会让账号停在 used = true 且没有任何绑定记录：
+// 它既不在号池里，也不属于任何卡密，从后台看就是账号凭空少了。
+//
+// 用法：拿到预留账号后立即建立守卫并 defer Release，
+// 每个账号一旦写入 CardAccount 绑定就调用 Commit。
+// 函数无论从哪条路径退出，没 Commit 的都会被归还号池。
+//
+// Commit 的时机是"绑定成功"而不是"发送成功"：绑定一旦落库，账号归属就已确定，
+// 用户重试时会通过卡密绑定关系重新取到它；此时再归还号池会让同一个号被派发两次。
+type reservationGuard struct {
+	pending map[uint]struct{}
+}
+
+func newReservationGuard(accounts []*model.Account) *reservationGuard {
+	g := &reservationGuard{pending: make(map[uint]struct{}, len(accounts))}
+	for _, acc := range accounts {
+		if acc != nil {
+			g.pending[acc.ID] = struct{}{}
+		}
+	}
+	return g
+}
+
+func newReservationGuardOne(account *model.Account) *reservationGuard {
+	return newReservationGuard([]*model.Account{account})
+}
+
+// Commit 标记账号归属已确定，不再需要归还。
+func (g *reservationGuard) Commit(id uint) {
+	delete(g.pending, id)
+}
+
+// Release 归还所有归属未确定的预留。必须用 defer 调用。
+func (g *reservationGuard) Release() {
+	for id := range g.pending {
+		releaseAccount(id)
+	}
+	g.pending = nil
+}
+
 // POST /api/activate
 // Body: { "code": "xxx" }
 func Activate(c *gin.Context) {
@@ -68,19 +112,25 @@ func Activate(c *gin.Context) {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"code": 2, "message": "账号不足，请联系管理员补充"})
 			return
 		}
+		// 账号已在 popMultipleAccounts 内部原子预留，任何提前返回都要归还未绑定的号。
+		guard := newReservationGuard(accounts)
+		defer guard.Release()
+
 		result := database.DB.Model(&model.Card{}).Where("id = ? AND used_at IS NULL", card.ID).Update("used_at", now)
 		if result.RowsAffected == 0 {
-			// 卡密被并发抢先激活，归还刚预留的账号。
-			releaseAccounts(accounts)
+			// 卡密被并发抢先激活，预留全部由守卫归还。
 			c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "卡密已被使用"})
 			return
 		}
 
-		// 账号已在 popMultipleAccounts 内部原子预留，这里只做绑定。
 		accountResps := make([]gin.H, 0, len(accounts))
 		accountIDStrs := make([]string, 0, len(accounts))
 		for _, acc := range accounts {
-			database.DB.Create(&model.CardAccount{CardID: card.ID, AccountID: acc.ID})
+			if err := database.DB.Create(&model.CardAccount{CardID: card.ID, AccountID: acc.ID}).Error; err != nil {
+				// 绑定失败则不交付这个号，交给守卫归还
+				continue
+			}
+			guard.Commit(acc.ID)
 			accountResps = append(accountResps, buildAccountResp(acc))
 			accountIDStrs = append(accountIDStrs, strconv.Itoa(int(acc.ID)))
 			database.DB.Create(&model.CardLog{
@@ -91,6 +141,12 @@ func Activate(c *gin.Context) {
 				Email:     acc.Email,
 				ClientIP:  c.ClientIP(),
 			})
+		}
+		if len(accountResps) == 0 {
+			// 一个都没绑定成功，卡密退回未使用
+			database.DB.Model(&model.Card{}).Where("id = ?", card.ID).Update("used_at", nil)
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "账号绑定失败，请重试"})
+			return
 		}
 
 		AddOpLogWithCtx(c, "activate", "多号卡激活 "+req.Code+"，绑定 "+strconv.Itoa(len(accounts))+" 个账号 ID:["+strings.Join(accountIDStrs, ",")+"], IP: "+c.ClientIP(), "client")
@@ -107,15 +163,23 @@ func Activate(c *gin.Context) {
 	updates := map[string]interface{}{
 		"used_at": now,
 	}
+	// 账号已在 popAccount 内部原子预留，任何提前返回都要归还。
+	guard := newReservationGuardOne(account)
+	defer guard.Release()
+
 	result := database.DB.Model(&model.Card{}).Where("id = ? AND used_at IS NULL", card.ID).Updates(updates)
 	if result.RowsAffected == 0 {
-		// 卡密被并发抢先激活，归还刚预留的账号。
-		releaseAccount(account.ID)
+		// 卡密被并发抢先激活，预留由守卫归还。
 		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "卡密已被使用"})
 		return
 	}
-	// 账号已在 popAccount 内部原子预留，这里只做绑定。
-	database.DB.Create(&model.CardAccount{CardID: card.ID, AccountID: account.ID})
+	if err := database.DB.Create(&model.CardAccount{CardID: card.ID, AccountID: account.ID}).Error; err != nil {
+		// 绑定失败：卡密退回未使用，账号由守卫归还，避免号被白占
+		database.DB.Model(&model.Card{}).Where("id = ?", card.ID).Update("used_at", nil)
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "账号绑定失败，请重试"})
+		return
+	}
+	guard.Commit(account.ID)
 
 	AddOpLogWithCtx(c, "activate", "激活卡密 "+req.Code+"，绑定账号 ID:"+strconv.Itoa(int(account.ID))+", IP: "+c.ClientIP(), "client")
 	database.DB.Create(&model.CardLog{
@@ -712,7 +776,9 @@ func streamUsedTokenCode(c *gin.Context, item tokenStreamCard, index *int) bool 
 	if sent >= item.total {
 		return true
 	}
-	ok, _ := streamFillTokenAccounts(c, item, item.total-sent, index)
+	// 已使用的卡密补号：卡密本身保持已用状态，不做回滚，
+	// 未绑定的预留由 streamFillTokenAccounts 内部的守卫归还。
+	ok, _, _ := streamFillTokenAccounts(c, item, item.total-sent, index)
 	return ok
 }
 
@@ -736,20 +802,41 @@ func streamFreshTokenCode(c *gin.Context, item tokenStreamCard, index *int) bool
 		return streamUsedTokenCode(c, item, index)
 	}
 
-	ok, sent := streamFillTokenAccounts(c, item, item.total, index)
+	ok, sent, bound := streamFillTokenAccounts(c, item, item.total, index)
 	if !ok && sent == 0 {
+		// 一个都没送达，把卡密退回未使用。
+		// 此时必须连同本次已写入的绑定一起撤销：否则卡密显示未使用，
+		// 却挂着绑定记录且账号停在 used = true，下次提取会重新分配一批号，
+		// 这一批就永远留在库里不属于任何人。
+		rollbackCardBindings(item.card.ID, bound)
 		database.DB.Model(&model.Card{}).Where("id = ?", item.card.ID).Update("used_at", nil)
 	}
 	return ok
 }
 
-func streamFillTokenAccounts(c *gin.Context, item tokenStreamCard, needed int, index *int) (bool, int) {
+// rollbackCardBindings 撤销本次为卡密建立的绑定，并把账号归还号池。
+// 只用于"整笔提取都没成功、卡密要退回未使用"的场景。
+func rollbackCardBindings(cardID uint, accountIDs []uint) {
+	if len(accountIDs) == 0 {
+		return
+	}
+	database.DB.Where("card_id = ? AND account_id IN ?", cardID, accountIDs).
+		Delete(&model.CardAccount{})
+	for _, id := range accountIDs {
+		releaseAccount(id)
+	}
+}
+
+// streamFillTokenAccounts 取号、绑定并流式下发。
+// 返回：是否全部下发成功、实际下发数量、本次已绑定到该卡密的账号 ID。
+func streamFillTokenAccounts(c *gin.Context, item tokenStreamCard, needed int, index *int) (bool, int, []uint) {
 	if needed <= 0 {
-		return true, 0
+		return true, 0, nil
 	}
 	clientIP := c.ClientIP()
 	sent := 0
 	accountIDStrs := make([]string, 0, needed)
+	bound := make([]uint, 0, needed)
 
 	// 批量获取所需数量的账号，避免重复调用 popAccount
 	accounts, err := popMultipleAccounts(needed, item.card.Subscription)
@@ -760,20 +847,31 @@ func streamFillTokenAccounts(c *gin.Context, item tokenStreamCard, needed int, i
 			"reason":  "account_pool_shortage",
 			"partial": sent,
 		})
-		return false, sent
+		return false, sent, bound
 	}
-	
-	// 账号已在 popMultipleAccounts 内部原子预留，这里只做绑定。
+
+	// 账号已在 popMultipleAccounts 内部原子预留。
+	// 客户端中途断连会让下面的循环提前返回，守卫负责把还没绑定的号还回池子，
+	// 否则它们会停在 used = true 且无绑定，等于从号池里消失。
+	guard := newReservationGuard(accounts)
+	defer guard.Release()
+
 	for _, account := range accounts {
 		if err := database.DB.Create(&model.CardAccount{CardID: item.card.ID, AccountID: account.ID}).Error; err != nil {
-			releaseAccount(account.ID)
+			// 绑定失败，交给守卫归还
 			continue
 		}
+		// 绑定已落库，归属确定，即使后面下发失败也不再归还
+		guard.Commit(account.ID)
+		bound = append(bound, account.ID)
 
 		accountIDStrs = append(accountIDStrs, strconv.Itoa(int(account.ID)))
 		database.DB.Create(&model.CardLog{CardID: item.card.ID, Code: item.card.Code, Action: "activate", AccountID: account.ID, Email: account.Email, ClientIP: clientIP})
 		if !streamAccountToken(c, *index, item.code, account) {
-			return false, sent
+			if len(accountIDStrs) > 0 {
+				AddOpLogWithCtx(c, "activate", "流式提取中断 "+item.code+"，已绑定 "+strconv.Itoa(len(accountIDStrs))+" 个账号 ID:["+strings.Join(accountIDStrs, ",")+"], IP: "+clientIP, "client")
+			}
+			return false, sent, bound
 		}
 		*index = *index + 1
 		sent++
@@ -784,7 +882,7 @@ func streamFillTokenAccounts(c *gin.Context, item tokenStreamCard, needed int, i
 	} else if len(accountIDStrs) > 0 {
 		AddOpLogWithCtx(c, "activate", "凭证接口流式激活卡密 "+item.code+"，绑定账号 ID:"+accountIDStrs[0]+", IP: "+clientIP, "client")
 	}
-	return true, sent
+	return true, sent, bound
 }
 
 func streamAccountToken(c *gin.Context, index int, code string, account *model.Account) bool {
@@ -834,21 +932,30 @@ func processOneCode(c *gin.Context, code string) ([]gin.H, gin.H, int) {
 		if err != nil {
 			return nil, gin.H{"code": 2, "message": "账号池账号不足: " + code}, http.StatusServiceUnavailable
 		}
+		// 账号已在 popMultipleAccounts 内部原子预留，任何提前返回都要归还未绑定的号。
+		guard := newReservationGuard(accounts)
+		defer guard.Release()
+
 		result := database.DB.Model(&model.Card{}).Where("id = ? AND used_at IS NULL", card.ID).Update("used_at", now)
 		if result.RowsAffected == 0 {
-			// 卡密被并发抢先激活，归还刚预留的账号。
-			releaseAccounts(accounts)
+			// 卡密被并发抢先激活，预留全部由守卫归还。
 			return nil, gin.H{"code": 1, "message": "卡密已被使用: " + code}, http.StatusBadRequest
 		}
 
-		// 账号已在 popMultipleAccounts 内部原子预留，这里只做绑定。
 		idStrs := make([]string, 0, len(accounts))
 		mods := make([]model.Account, 0, len(accounts))
 		for _, acc := range accounts {
-			database.DB.Create(&model.CardAccount{CardID: card.ID, AccountID: acc.ID})
+			if err := database.DB.Create(&model.CardAccount{CardID: card.ID, AccountID: acc.ID}).Error; err != nil {
+				continue
+			}
+			guard.Commit(acc.ID)
 			idStrs = append(idStrs, strconv.Itoa(int(acc.ID)))
 			mods = append(mods, *acc)
 			database.DB.Create(&model.CardLog{CardID: card.ID, Code: card.Code, Action: "activate", AccountID: acc.ID, Email: acc.Email, ClientIP: clientIP})
+		}
+		if len(mods) == 0 {
+			database.DB.Model(&model.Card{}).Where("id = ?", card.ID).Update("used_at", nil)
+			return nil, gin.H{"code": 1, "message": "账号绑定失败，请重试: " + code}, http.StatusInternalServerError
 		}
 		AddOpLogWithCtx(c, "activate", "多号卡激活 "+code+"，绑定 "+strconv.Itoa(len(accounts))+" 个账号 ID:["+strings.Join(idStrs, ",")+"], IP: "+clientIP, "client")
 		return buildMultiTokenArray(mods), nil, 0
@@ -858,14 +965,20 @@ func processOneCode(c *gin.Context, code string) ([]gin.H, gin.H, int) {
 	if err != nil {
 		return nil, gin.H{"code": 2, "message": "账号池已空: " + code}, http.StatusServiceUnavailable
 	}
+	// 账号已在 popAccount 内部原子预留，任何提前返回都要归还。
+	guard := newReservationGuardOne(account)
+	defer guard.Release()
+
 	result := database.DB.Model(&model.Card{}).Where("id = ? AND used_at IS NULL", card.ID).Update("used_at", now)
 	if result.RowsAffected == 0 {
-		// 卡密被并发抢先激活，归还刚预留的账号。
-		releaseAccount(account.ID)
+		// 卡密被并发抢先激活，预留由守卫归还。
 		return nil, gin.H{"code": 1, "message": "卡密已被使用: " + code}, http.StatusBadRequest
 	}
-	// 账号已在 popAccount 内部原子预留，这里只做绑定。
-	database.DB.Create(&model.CardAccount{CardID: card.ID, AccountID: account.ID})
+	if err := database.DB.Create(&model.CardAccount{CardID: card.ID, AccountID: account.ID}).Error; err != nil {
+		database.DB.Model(&model.Card{}).Where("id = ?", card.ID).Update("used_at", nil)
+		return nil, gin.H{"code": 1, "message": "账号绑定失败，请重试: " + code}, http.StatusInternalServerError
+	}
+	guard.Commit(account.ID)
 	AddOpLogWithCtx(c, "activate", "凭证接口激活卡密 "+code+"，绑定账号 ID:"+strconv.Itoa(int(account.ID))+", IP: "+clientIP, "client")
 	database.DB.Create(&model.CardLog{CardID: card.ID, Code: card.Code, Action: "activate", AccountID: account.ID, Email: account.Email, ClientIP: clientIP})
 	return buildTokenArray(account), nil, 0
