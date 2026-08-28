@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -44,6 +45,13 @@ var (
 // StartHealthScanScheduler 启动巡检调度。多次调用只生效一次。
 func StartHealthScanScheduler() {
 	healthScanOnce.Do(func() {
+		// 启动前排空可能已积压的变更信号。
+		// LoadSettingsFromEnv 在启动时就会触发一次配置变更通知，不清掉的话
+		// 循环第一次 select 会直接走 wake 分支，跳过下面的启动延迟。
+		select {
+		case <-healthScanWake:
+		default:
+		}
 		// 巡检循环必须常驻。加一层重启：单轮 panic 被兜底后循环继续，
 		// 若连循环本身都挂了则重新拉起，不让服务失去状态维护能力。
 		goSafe("health-scan-supervisor", func() {
@@ -72,6 +80,20 @@ func healthScanLoop() {
 		select {
 		case <-timer.C:
 			s := GetCurrentSettings()
+			now := time.Now()
+
+			if s.HealthScanEnabled && inQuietHours(s, now) {
+				// 静默时段不跑自动巡检，直接睡到时段结束。
+				// 只推迟 nextRun，不动 base —— base 表示上次实际巡检的基准时间，
+				// 把它挪到未来会让后续按间隔的重算全部偏移。
+				resume := nextQuietEnd(s, now)
+				log.Printf("健康巡检处于静默时段（北京时间 %02d:00-%02d:00），%s 恢复",
+					s.HealthScanQuietStartHour, s.HealthScanQuietEndHour,
+					resume.In(beijingZone).Format("01-02 15:04"))
+				nextRun = resume
+				continue
+			}
+
 			if s.HealthScanEnabled {
 				// 单轮 panic 不应中断调度循环
 				runSafe("health-scan-tick", func() { runHealthScanTick(s) })
@@ -83,11 +105,26 @@ func healthScanLoop() {
 		case <-healthScanWake:
 			// 设置变更只重算下次时间，不额外触发一轮巡检。
 			timer.Stop()
-			nextRun = base.Add(scanInterval(GetCurrentSettings()))
-			if nextRun.Before(time.Now()) {
-				// 新间隔比已等待的时间还短，则下个循环立即执行。
-				nextRun = time.Now()
+			s := GetCurrentSettings()
+			now := time.Now()
+			if s.HealthScanEnabled && inQuietHours(s, now) {
+				// 新配置下当前落在静默时段，睡到时段结束
+				nextRun = nextQuietEnd(s, now)
+				log.Printf("健康巡检配置已更新：当前处于静默时段，%s 恢复",
+					nextRun.In(beijingZone).Format("01-02 15:04"))
+				continue
 			}
+			recalculated := base.Add(scanInterval(s))
+			if recalculated.Before(now) {
+				// 距上次巡检已超过一个间隔（可能刚从静默时段出来），下个循环立即执行
+				recalculated = now
+			}
+			// 配置变更不应把已排定的时间往后推
+			if recalculated.Before(nextRun) {
+				nextRun = recalculated
+			}
+			log.Printf("健康巡检配置已更新：下一轮 %s",
+				nextRun.In(beijingZone).Format("01-02 15:04"))
 		}
 	}
 }
@@ -98,6 +135,39 @@ func scanInterval(s AppSettings) time.Duration {
 		d = 30 * time.Minute
 	}
 	return d
+}
+
+// 静默时段固定按北京时间判断，不跟随服务器本地时区。
+// 容器部署时系统时区通常是 UTC，用 time.Now().Hour() 会把时段整体算错 8 小时。
+var beijingZone = time.FixedZone("CST", 8*60*60)
+
+// inQuietHours 判断当前（北京时间）是否处于静默时段。
+// 起止小时相同视为不静默。时段含起始小时、不含结束小时，
+// 例如 0 和 8 表示 00:00:00 到 07:59:59 静默，08:00 开始工作。
+func inQuietHours(s AppSettings, now time.Time) bool {
+	start, end := s.HealthScanQuietStartHour, s.HealthScanQuietEndHour
+	if start == end {
+		return false
+	}
+	h := now.In(beijingZone).Hour()
+	if start < end {
+		return h >= start && h < end
+	}
+	// 跨午夜，例如 22 到 6
+	return h >= start || h < end
+}
+
+// nextQuietEnd 返回静默时段结束的时刻（北京时间的整点）。
+// 静默期内让调度直接睡到这个时刻，而不是继续按间隔空转，
+// 这样时段一结束就能立刻开始巡检。
+func nextQuietEnd(s AppSettings, now time.Time) time.Time {
+	local := now.In(beijingZone)
+	end := time.Date(local.Year(), local.Month(), local.Day(),
+		s.HealthScanQuietEndHour, 0, 0, 0, beijingZone)
+	if !end.After(local) {
+		end = end.AddDate(0, 0, 1)
+	}
+	return end
 }
 
 // notifyHealthScanSettingsChanged 让巡检循环立刻采用新的间隔配置。
@@ -256,22 +326,43 @@ func scanAccountsOnce(s AppSettings, epoch uint64) (int, int, int, error) {
 
 // HealthScanStatus 暴露巡检运行状态，供设置页展示。
 func HealthScanStatus() map[string]interface{} {
+	// 先取需要外部锁或数据库的数据，避免在 healthScan.mu 里嵌套加锁、跑查询
+	s := GetCurrentSettings()
+	now := time.Now()
+	quiet := inQuietHours(s, now)
+	pending := pendingHealthScanCount()
+
 	healthScan.mu.RLock()
-	defer healthScan.mu.RUnlock()
+	running := healthScan.running
+	lastChecked := healthScan.lastChecked
+	lastFlipped := healthScan.lastFlipped
+	lastFailed := healthScan.lastFailed
+	lastErr := healthScan.lastErr
+	lastStarted := healthScan.lastStarted
+	lastEnded := healthScan.lastEnded
+	healthScan.mu.RUnlock()
 
 	status := map[string]interface{}{
-		"running":      healthScan.running,
-		"lastChecked":  healthScan.lastChecked,
-		"lastFlipped":  healthScan.lastFlipped,
-		"lastFailed":   healthScan.lastFailed,
-		"lastError":    healthScan.lastErr,
-		"pendingTotal": pendingHealthScanCount(),
+		"running":      running,
+		"lastChecked":  lastChecked,
+		"lastFlipped":  lastFlipped,
+		"lastFailed":   lastFailed,
+		"lastError":    lastErr,
+		"pendingTotal": pending,
+		"inQuietHours": quiet,
 	}
-	if !healthScan.lastStarted.IsZero() {
-		status["lastStartedAt"] = healthScan.lastStarted
+	if s.HealthScanQuietStartHour != s.HealthScanQuietEndHour {
+		status["quietWindow"] = fmt.Sprintf("北京时间 %02d:00-%02d:00",
+			s.HealthScanQuietStartHour, s.HealthScanQuietEndHour)
 	}
-	if !healthScan.lastEnded.IsZero() {
-		status["lastEndedAt"] = healthScan.lastEnded
+	if quiet {
+		status["quietResumeAt"] = nextQuietEnd(s, now)
+	}
+	if !lastStarted.IsZero() {
+		status["lastStartedAt"] = lastStarted
+	}
+	if !lastEnded.IsZero() {
+		status["lastEndedAt"] = lastEnded
 	}
 	return status
 }

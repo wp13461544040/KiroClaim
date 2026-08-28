@@ -12,6 +12,8 @@ async function loadSettings() {
   document.getElementById('settingHealthScanEnabled').checked = d.healthScanEnabled !== false;
   document.getElementById('settingHealthScanIntervalMinutes').value = Number.isFinite(Number(d.healthScanIntervalMinutes)) ? Number(d.healthScanIntervalMinutes) : 30;
   document.getElementById('settingHealthScanBatchSize').value = Number.isFinite(Number(d.healthScanBatchSize)) ? Number(d.healthScanBatchSize) : 1000;
+  document.getElementById('settingHealthScanQuietStartHour').value = Number.isFinite(Number(d.healthScanQuietStartHour)) ? Number(d.healthScanQuietStartHour) : 0;
+  document.getElementById('settingHealthScanQuietEndHour').value = Number.isFinite(Number(d.healthScanQuietEndHour)) ? Number(d.healthScanQuietEndHour) : 8;
   renderHealthScanStatus(d.healthScanStatus);
   document.getElementById('settingRequestTimeoutSeconds').value = Number.isFinite(Number(d.requestTimeoutSeconds)) ? Number(d.requestTimeoutSeconds) : 45;
   document.getElementById('settingOpenApiEnabled').checked = !!d.openApiEnabled;
@@ -64,7 +66,12 @@ function renderHealthScanStatus(st) {
   }
 
   var lines = [];
-  lines.push(st.running ? '正在巡检中...' : '空闲');
+  if (st.inQuietHours) {
+    lines.push('静默时段中（' + (st.quietWindow || '') + '），' +
+      (st.quietResumeAt ? fmtScanTime(st.quietResumeAt) + ' 恢复' : '暂不巡检'));
+  } else {
+    lines.push(st.running ? '正在巡检中...' : '空闲');
+  }
   lines.push('上次开始：' + fmtScanTime(st.lastStartedAt));
   if (st.lastEndedAt) {
     var detail = '检查 ' + (st.lastChecked || 0) + ' 个，状态变更 ' + (st.lastFlipped || 0) + ' 个';
@@ -124,6 +131,8 @@ async function saveSettings() {
     healthScanEnabled: document.getElementById('settingHealthScanEnabled').checked,
     healthScanIntervalMinutes: readIntSetting('settingHealthScanIntervalMinutes', 30),
     healthScanBatchSize: readIntSetting('settingHealthScanBatchSize', 1000),
+    healthScanQuietStartHour: readIntSetting('settingHealthScanQuietStartHour', 0),
+    healthScanQuietEndHour: readIntSetting('settingHealthScanQuietEndHour', 8),
     openApiEnabled: document.getElementById('settingOpenApiEnabled').checked,
     requestTimeoutSeconds: readIntSetting('settingRequestTimeoutSeconds', 45),
     rateLimitEnabled: document.getElementById('settingRateLimitEnabled').checked,
@@ -222,7 +231,7 @@ function initSettingsCategories() {
   var commerceMount=document.getElementById('commerceSettingsMount');
   if(!body||!source||!channelsMount||!commerceMount||!document.getElementById('settingsForm')) { return false; }
   var host=document.createElement('div'); host.id='settingsCategoryHost'; body.insertBefore(host,source);
-  createSettingsPane(host,'base',['settingMaxUpstreamCheckConcurrency','settingDispatchHealthCheckEnabled','settingHealthScanEnabled','settingHealthScanIntervalMinutes','settingHealthScanBatchSize','settingOpenApiEnabled','settingRequestTimeoutSeconds','settingMinResponseMs','settingRateLimitEnabled','settingRateLimitPerMin','settingLoginFailLimit','settingLoginLockMinutes','settingCaptchaEnabled','settingCaptchaSiteKey','settingCaptchaSecretKey','settingCaptchaFreeCount']);
+  createSettingsPane(host,'base',['settingMaxUpstreamCheckConcurrency','settingDispatchHealthCheckEnabled','settingHealthScanEnabled','settingHealthScanIntervalMinutes','settingHealthScanBatchSize','settingHealthScanQuietStartHour','settingHealthScanQuietEndHour','settingOpenApiEnabled','settingRequestTimeoutSeconds','settingMinResponseMs','settingRateLimitEnabled','settingRateLimitPerMin','settingLoginFailLimit','settingLoginLockMinutes','settingCaptchaEnabled','settingCaptchaSiteKey','settingCaptchaSecretKey','settingCaptchaFreeCount']);
   createSettingsPane(host,'logging',['settingLogFileEnabled','settingLogFilePath','settingLogMaxSizeMB','settingLogMaxBackups','settingLogMaxAgeDays','settingLogCompress','settingAutoUpdateEnabled']);
   var commercePane=createSettingsPane(host,'commerce',['setEnabled','setDefaultExpiry','setManualExpiry']); commercePane.appendChild(channelsMount);
   var deliveryPane=createSettingsPane(host,'delivery',['setStorageType','setLocalPath','setMaxProof','setS3Endpoint','setS3Region','setS3Bucket','setS3Access','setS3Secret','setS3SSL']);

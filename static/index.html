@@ -433,6 +433,16 @@
                   <div class="settings-help">优先检查最久未检查的账号。号池大于该值时需要多轮才能覆盖一遍</div>
                 </div>
                 <div class="settings-field">
+                  <label class="settings-label" for="settingHealthScanQuietStartHour">静默开始（北京时间，整点）</label>
+                  <input class="k-input" type="number" id="settingHealthScanQuietStartHour" min="0" max="23" value="0">
+                  <div class="settings-help">该时段内不跑自动巡检，手动触发不受限制</div>
+                </div>
+                <div class="settings-field">
+                  <label class="settings-label" for="settingHealthScanQuietEndHour">静默结束（北京时间，整点）</label>
+                  <input class="k-input" type="number" id="settingHealthScanQuietEndHour" min="0" max="23" value="8">
+                  <div class="settings-help">含开始不含结束。两值相同表示全天巡检</div>
+                </div>
+                <div class="settings-field">
                   <label class="settings-label" for="settingRequestTimeoutSeconds">上游请求超时（秒）</label>
                   <input class="k-input" type="number" id="settingRequestTimeoutSeconds" min="1" value="45">
                   <div class="settings-help">刷新、用量和模型接口的请求超时</div>

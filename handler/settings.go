@@ -24,6 +24,8 @@ type AppSettings struct {
 	HealthScanEnabled           bool
 	HealthScanIntervalMinutes   int
 	HealthScanBatchSize         int
+	HealthScanQuietStartHour    int
+	HealthScanQuietEndHour      int
 	OpenAPIEnabled              bool
 	OpenAPIKey                  string
 	RequestTimeoutSeconds       int
@@ -52,6 +54,8 @@ type storedRuntimeSettings struct {
 	HealthScanEnabled           *bool   `json:"healthScanEnabled,omitempty"`
 	HealthScanIntervalMinutes   *int    `json:"healthScanIntervalMinutes,omitempty"`
 	HealthScanBatchSize         *int    `json:"healthScanBatchSize,omitempty"`
+	HealthScanQuietStartHour    *int    `json:"healthScanQuietStartHour,omitempty"`
+	HealthScanQuietEndHour      *int    `json:"healthScanQuietEndHour,omitempty"`
 	OpenAPIEnabled              *bool   `json:"openApiEnabled,omitempty"`
 	OpenAPIKey                  *string `json:"openApiKey,omitempty"`
 	RequestTimeoutSeconds       *int    `json:"requestTimeoutSeconds,omitempty"`
@@ -88,7 +92,10 @@ func LoadSettingsFromEnv() {
 		HealthScanEnabled:          envBool("HEALTH_SCAN_ENABLED", true),
 		HealthScanIntervalMinutes:  envInt("HEALTH_SCAN_INTERVAL_MINUTES", 30),
 		HealthScanBatchSize:        envInt("HEALTH_SCAN_BATCH_SIZE", 1000),
-		OpenAPIEnabled:             envBool("OPEN_API_ENABLED", false),
+		// 默认北京时间 0 点到 8 点不跑自动巡检
+		HealthScanQuietStartHour: envInt("HEALTH_SCAN_QUIET_START_HOUR", 0),
+		HealthScanQuietEndHour:   envInt("HEALTH_SCAN_QUIET_END_HOUR", 8),
+		OpenAPIEnabled:           envBool("OPEN_API_ENABLED", false),
 		OpenAPIKey:                 os.Getenv("OPEN_API_KEY"),
 		RequestTimeoutSeconds:      45,
 		RateLimitEnabled:            envBool("RATE_LIMIT_ENABLED", true),
@@ -152,6 +159,12 @@ func mergeStoredRuntimeSettings(s *AppSettings, stored storedRuntimeSettings) {
 	}
 	if stored.HealthScanBatchSize != nil {
 		s.HealthScanBatchSize = *stored.HealthScanBatchSize
+	}
+	if stored.HealthScanQuietStartHour != nil {
+		s.HealthScanQuietStartHour = *stored.HealthScanQuietStartHour
+	}
+	if stored.HealthScanQuietEndHour != nil {
+		s.HealthScanQuietEndHour = *stored.HealthScanQuietEndHour
 	}
 	if stored.OpenAPIEnabled != nil {
 		s.OpenAPIEnabled = *stored.OpenAPIEnabled
@@ -222,6 +235,13 @@ func normalizeSettings(s *AppSettings) {
 	if s.HealthScanBatchSize <= 0 {
 		s.HealthScanBatchSize = 1000
 	}
+	// 超出 0-23 的值一律按"不静默"处理，避免算出无意义的时段
+	if s.HealthScanQuietStartHour < 0 || s.HealthScanQuietStartHour > 23 {
+		s.HealthScanQuietStartHour = 0
+	}
+	if s.HealthScanQuietEndHour < 0 || s.HealthScanQuietEndHour > 23 {
+		s.HealthScanQuietEndHour = 0
+	}
 	if s.RequestTimeoutSeconds <= 0 {
 		s.RequestTimeoutSeconds = 45
 	}
@@ -267,6 +287,8 @@ func persistRuntimeSettings(s AppSettings) error {
 		HealthScanEnabled:           boolPtr(s.HealthScanEnabled),
 		HealthScanIntervalMinutes:   intPtr(s.HealthScanIntervalMinutes),
 		HealthScanBatchSize:         intPtr(s.HealthScanBatchSize),
+		HealthScanQuietStartHour:    intPtr(s.HealthScanQuietStartHour),
+		HealthScanQuietEndHour:      intPtr(s.HealthScanQuietEndHour),
 		OpenAPIEnabled:              boolPtr(s.OpenAPIEnabled),
 		OpenAPIKey:                  stringPtr(s.OpenAPIKey),
 		RequestTimeoutSeconds:       intPtr(s.RequestTimeoutSeconds),
@@ -359,6 +381,8 @@ func AdminSettings(c *gin.Context) {
 			"healthScanEnabled":           s.HealthScanEnabled,
 			"healthScanIntervalMinutes":   s.HealthScanIntervalMinutes,
 			"healthScanBatchSize":         s.HealthScanBatchSize,
+			"healthScanQuietStartHour":    s.HealthScanQuietStartHour,
+			"healthScanQuietEndHour":      s.HealthScanQuietEndHour,
 			"healthScanStatus":            HealthScanStatus(),
 			"openApiEnabled":              s.OpenAPIEnabled,
 			"openApiKeyConfigured":        strings.TrimSpace(s.OpenAPIKey) != "",
@@ -390,6 +414,8 @@ func UpdateAdminSettings(c *gin.Context) {
 		HealthScanEnabled           bool   `json:"healthScanEnabled"`
 		HealthScanIntervalMinutes   int    `json:"healthScanIntervalMinutes"`
 		HealthScanBatchSize         int    `json:"healthScanBatchSize"`
+		HealthScanQuietStartHour    int    `json:"healthScanQuietStartHour"`
+		HealthScanQuietEndHour      int    `json:"healthScanQuietEndHour"`
 		OpenAPIEnabled              bool   `json:"openApiEnabled"`
 		OpenAPIKey                  string `json:"openApiKey"`
 		RequestTimeoutSeconds       int    `json:"requestTimeoutSeconds"`
@@ -463,6 +489,11 @@ func UpdateAdminSettings(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "定时巡检每轮数量必须大于 0"})
 			return
 		}
+		if req.HealthScanQuietStartHour < 0 || req.HealthScanQuietStartHour > 23 ||
+			req.HealthScanQuietEndHour < 0 || req.HealthScanQuietEndHour > 23 {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "静默时段的小时必须在 0 到 23 之间"})
+			return
+		}
 	}
 	if !req.HealthScanEnabled && !req.DispatchHealthCheckEnabled {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "定时巡检与派发检测不能同时关闭，否则账号状态无法更新，可能把已封禁账号发给用户"})
@@ -482,6 +513,8 @@ func UpdateAdminSettings(c *gin.Context) {
 	s.HealthScanEnabled = req.HealthScanEnabled
 	s.HealthScanIntervalMinutes = req.HealthScanIntervalMinutes
 	s.HealthScanBatchSize = req.HealthScanBatchSize
+	s.HealthScanQuietStartHour = req.HealthScanQuietStartHour
+	s.HealthScanQuietEndHour = req.HealthScanQuietEndHour
 	s.OpenAPIEnabled = req.OpenAPIEnabled
 	// 与验证码 Secret 同样处理：留空表示不修改，避免前端回显后被空值覆盖
 	if key := strings.TrimSpace(req.OpenAPIKey); key != "" {
