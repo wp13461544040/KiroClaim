@@ -1,6 +1,7 @@
 ﻿package handler
 
 import (
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -17,6 +18,14 @@ import (
 
 // 全表扫描时每批读取的账号数量，控制单次驻留内存的实体数量。
 const accountScanBatchSize = 100
+
+// 导入任务串行执行。
+//
+// 去重依赖任务开始时对库内 refreshToken 的一次快照，两个导入任务并发时
+// 会各拿一份快照，同一个 token 就可能被判定为"不存在"而插入两次。
+// 重复的账号会被当成两个号分别派发给不同卡密，等于两个用户拿到同一个账号。
+// refresh_token 列上没有唯一索引，数据库这一层挡不住，因此在这里串行化。
+var importRunMu sync.Mutex
 
 // POST /admin/accounts/import
 // Body: JSON 数组，支持直接数组或 accounts 数组。
@@ -45,8 +54,8 @@ func ImportAccounts(c *gin.Context) {
 	}
 	importTasksMu.Unlock()
 
-	// 异步处理导入。
-	go processImport(taskID, accounts)
+	// 异步处理导入。panic 兜底，避免单条异常数据崩掉整个进程。
+	goSafe("import:"+taskID, func() { processImport(taskID, accounts) })
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
@@ -228,6 +237,25 @@ func processImport(taskID string, accounts []map[string]interface{}) {
 	importTasksMu.RLock()
 	task := importTasks[taskID]
 	importTasksMu.RUnlock()
+	if task == nil {
+		return
+	}
+
+	// 无论正常结束还是中途 panic，都必须给任务一个终态，
+	// 否则前端会一直轮询一个永远停在 processing 的任务。
+	defer func() {
+		importTasksMu.Lock()
+		if task.Status == "processing" {
+			now := time.Now()
+			task.Status = "failed"
+			task.EndTime = &now
+		}
+		importTasksMu.Unlock()
+	}()
+
+	// 串行执行，保证下面的去重快照在整个任务期间有效。
+	importRunMu.Lock()
+	defer importRunMu.Unlock()
 
 	// 导入只建立流水线 worker，真正的上游请求并发由全局检查池统一控制。
 	//
@@ -296,29 +324,38 @@ func processImport(taskID string, accounts []map[string]interface{}) {
 		go func() {
 			defer wg.Done()
 			for job := range jobs {
-				acc := job.account
-				result := checkAccountHealth(acc)
-				if !applyImportHealthResult(&acc, result) {
-					reason := result.errMsg
-					if reason == "" {
-						reason = "账号健康检查未通过"
+				// 每个账号单独兜底：一条数据异常只记为失败，不影响其余账号继续导入。
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							log.Printf("导入账号 panic 已恢复 [row %d]: %v", job.row, r)
+							results <- importCheckResult{row: job.row, reason: "账号数据异常，已跳过", bad: true}
+						}
+					}()
+					acc := job.account
+					result := checkAccountHealth(acc)
+					if !applyImportHealthResult(&acc, result) {
+						reason := result.errMsg
+						if reason == "" {
+							reason = "账号健康检查未通过"
+						}
+						results <- importCheckResult{row: job.row, reason: reason, bad: true}
+						return
 					}
-					results <- importCheckResult{row: job.row, reason: reason, bad: true}
-					continue
-				}
-				results <- importCheckResult{account: acc, row: job.row}
+					results <- importCheckResult{account: acc, row: job.row}
+				}()
 			}
 		}()
 	}
 
-	go func() {
+	goSafe("import-feed:"+taskID, func() {
 		for _, candidate := range candidates {
 			jobs <- candidate
 		}
 		close(jobs)
 		wg.Wait()
 		close(results)
-	}()
+	})
 
 	insertBatch := make([]model.Account, 0, importInsertBatchSize)
 	for result := range results {
@@ -511,8 +548,11 @@ func DeleteAccountsByStatus(c *gin.Context) {
 		go func() {
 			defer wg.Done()
 			for account := range jobs {
-				result := checkAccountHealth(account)
-				_ = applyHealthResult(account.ID, result)
+				acc := account
+				runSafe("delete-by-status-check", func() {
+					result := checkAccountHealth(acc)
+					_ = applyHealthResult(acc.ID, result)
+				})
 			}
 		}()
 	}

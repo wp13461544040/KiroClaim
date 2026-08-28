@@ -1,6 +1,7 @@
 ﻿package handler
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -344,7 +345,7 @@ func popAccount(excludeID uint, subscription string) (*model.Account, error) {
 	sem := make(chan struct{}, localLimit)
 	var found atomic.Bool
 
-	go func() {
+	goSafe("dispatch-check-feed", func() {
 		defer close(done)
 		var wg sync.WaitGroup
 		for i := range unchecked {
@@ -355,6 +356,11 @@ func popAccount(excludeID uint, subscription string) (*model.Account, error) {
 			wg.Add(1)
 			go func(acc model.Account) {
 				defer func() { <-sem; wg.Done() }()
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("派发健康检查 panic 已恢复 [account %d]: %v", acc.ID, r)
+					}
+				}()
 				if found.Load() {
 					return
 				}
@@ -393,7 +399,7 @@ func popAccount(excludeID uint, subscription string) (*model.Account, error) {
 			}(unchecked[i])
 		}
 		wg.Wait()
-	}()
+	})
 
 	select {
 	case w := <-winner:
@@ -493,6 +499,20 @@ func popMultipleAccounts(n int, subscription string) ([]*model.Account, error) {
 			freshWg.Add(1)
 			go func(acc model.Account) {
 				defer freshWg.Done()
+				// 预留成功后若发生 panic，必须把号还回去，否则它会停在
+				// used = true 且无人认领。只在确实预留成功时才释放，
+				// 避免误放别的请求刚抢到的号。
+				reserved := false
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("多号卡预检 panic 已恢复 [account %d]: %v", acc.ID, r)
+						if reserved {
+							releaseAccount(acc.ID)
+						}
+						freshChan <- freshResult{account: acc}
+					}
+				}()
+
 				if !verifyDispatchable(acc.AccessToken) {
 					freshChan <- freshResult{account: acc}
 					return
@@ -501,6 +521,7 @@ func popMultipleAccounts(n int, subscription string) ([]*model.Account, error) {
 					freshChan <- freshResult{account: acc}
 					return
 				}
+				reserved = true
 				freshChan <- freshResult{account: acc, ok: true}
 			}(fresh[i])
 		}
@@ -566,7 +587,18 @@ func popMultipleAccounts(n int, subscription string) ([]*model.Account, error) {
 		sem <- struct{}{}
 		go func(acc model.Account) {
 			defer func() { <-sem; wg.Done() }()
-			
+			// 与上面同理：预留后 panic 必须归还，否则号会凭空消失。
+			reserved := false
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("多号卡健康检查 panic 已恢复 [account %d]: %v", acc.ID, r)
+					if reserved {
+						releaseAccount(acc.ID)
+					}
+					resultChan <- checkedAccount{account: acc, valid: false}
+				}
+			}()
+
 			result := checkAccountHealth(acc)
 			updates := buildHealthUpdates(result, time.Now())
 			if err := persistHealthUpdates(acc.ID, updates); err != nil {
@@ -600,15 +632,16 @@ func popMultipleAccounts(n int, subscription string) ([]*model.Account, error) {
 				resultChan <- checkedAccount{account: acc, valid: false}
 				return
 			}
+			reserved = true
 
 			resultChan <- checkedAccount{account: acc, valid: true}
 		}(candidate)
 	}
 
-	go func() {
+	goSafe("dispatch-multi-collect", func() {
 		wg.Wait()
 		close(resultChan)
-	}()
+	})
 
 	// 收集有效账号。凑够 n 个后仍需排空 channel，
 	// 把多余的已预留账号释放回池，否则它们会被白占。

@@ -43,7 +43,15 @@ var (
 // StartHealthScanScheduler 启动巡检调度。多次调用只生效一次。
 func StartHealthScanScheduler() {
 	healthScanOnce.Do(func() {
-		go healthScanLoop()
+		// 巡检循环必须常驻。加一层重启：单轮 panic 被兜底后循环继续，
+		// 若连循环本身都挂了则重新拉起，不让服务失去状态维护能力。
+		goSafe("health-scan-supervisor", func() {
+			for {
+				runSafe("health-scan-loop", healthScanLoop)
+				log.Println("健康巡检循环异常退出，5 秒后重启")
+				time.Sleep(5 * time.Second)
+			}
+		})
 	})
 }
 
@@ -64,7 +72,8 @@ func healthScanLoop() {
 		case <-timer.C:
 			s := GetCurrentSettings()
 			if s.HealthScanEnabled {
-				runHealthScanTick(s)
+				// 单轮 panic 不应中断调度循环
+				runSafe("health-scan-tick", func() { runHealthScanTick(s) })
 			}
 			// 以本轮结束时间为基准排下一轮，避免长时间巡检导致轮次堆叠。
 			base = time.Now()
@@ -190,15 +199,19 @@ func scanAccountsOnce(s AppSettings, epoch uint64) (int, int, error) {
 					return
 				}
 
-				before := acc.Status
-				result := checkAccountHealth(acc)
-				if err := applyHealthResult(acc.ID, result); err != nil {
-					continue
-				}
-				checked.Add(1)
-				if result.status != before {
-					flipped.Add(1)
-				}
+				account := acc
+				// 单个账号异常不影响本轮其余账号
+				runSafe("health-scan-account", func() {
+					before := account.Status
+					result := checkAccountHealth(account)
+					if err := applyHealthResult(account.ID, result); err != nil {
+						return
+					}
+					checked.Add(1)
+					if result.status != before {
+						flipped.Add(1)
+					}
+				})
 			}
 		}()
 	}
@@ -265,7 +278,8 @@ func TriggerHealthScan(c *gin.Context) {
 		return
 	}
 
-	go runHealthScanTick(GetCurrentSettings())
+	s := GetCurrentSettings()
+	goSafe("health-scan-manual", func() { runHealthScanTick(s) })
 	AddOpLogWithCtx(c, "refresh", "手动触发账号健康巡检", "admin")
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "巡检已启动，可在设置页查看进度"})
 }

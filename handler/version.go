@@ -383,15 +383,16 @@ func getUpdateLastMessage() string {
 
 func StartAutoUpdateScheduler() {
 	updateSchedulerOnce.Do(func() {
-		go func() {
+		goSafe("auto-update-scheduler", func() {
 			timer := time.NewTimer(2 * time.Minute)
 			defer timer.Stop()
 			for {
 				<-timer.C
-				runAutoUpdateTick()
+				// 单次检查 panic 不应中断调度循环
+				runSafe("auto-update-tick", runAutoUpdateTick)
 				timer.Reset(autoUpdateInterval)
 			}
-		}()
+		})
 	})
 }
 
