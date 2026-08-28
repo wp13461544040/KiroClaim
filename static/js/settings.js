@@ -97,7 +97,7 @@ async function generateOpenApiKey() {
   var reveal = document.getElementById('openApiKeyReveal');
   var value = document.getElementById('openApiKeyValue');
   if (value) value.textContent = r.data.apiKey;
-  if (reveal) reveal.style.display = 'block';
+  if (reveal) reveal.hidden = false;
 
   var keyState = document.getElementById('openApiKeyState');
   if (keyState) keyState.textContent = 'Key 已配置（明文不回显，如遗失请生成新 Key）';
@@ -178,7 +178,19 @@ function createSettingsPane(host, name, controlIds) {
   pane.hidden = true;
   pane.appendChild(createSettingsGridFromControls(controlIds));
   host.appendChild(pane);
+  attachSettingsPanels(pane, name);
   return pane;
+}
+
+// 把高度不定的区块挂到对应分类下。
+// 它们不能进 settings-grid：那里的行高被固定为 82px，内容一超就会溢出压住下面的字段。
+function attachSettingsPanels(pane, category) {
+  var source = document.getElementById('settingsPanelSource');
+  if (!source || !pane) return;
+  var panels = source.querySelectorAll('[data-settings-panel="' + category + '"]');
+  for (var i = 0; i < panels.length; i++) {
+    pane.appendChild(panels[i]);
+  }
 }
 
 function createSettingsGridFromControls(controlIds) {
@@ -209,13 +221,15 @@ function initSettingsCategories() {
   var commerceMount=document.getElementById('commerceSettingsMount');
   if(!body||!source||!channelsMount||!commerceMount||!document.getElementById('settingsForm')) { return false; }
   var host=document.createElement('div'); host.id='settingsCategoryHost'; body.insertBefore(host,source);
-  createSettingsPane(host,'base',['settingMaxUpstreamCheckConcurrency','settingDispatchHealthCheckEnabled','settingHealthScanEnabled','settingHealthScanIntervalMinutes','settingHealthScanBatchSize','healthScanStatusText','settingOpenApiEnabled','openApiKeyState','settingRequestTimeoutSeconds','settingMinResponseMs','settingRateLimitEnabled','settingRateLimitPerMin','settingLoginFailLimit','settingLoginLockMinutes','settingCaptchaEnabled','settingCaptchaSiteKey','settingCaptchaSecretKey','settingCaptchaFreeCount']);
+  createSettingsPane(host,'base',['settingMaxUpstreamCheckConcurrency','settingDispatchHealthCheckEnabled','settingHealthScanEnabled','settingHealthScanIntervalMinutes','settingHealthScanBatchSize','settingOpenApiEnabled','settingRequestTimeoutSeconds','settingMinResponseMs','settingRateLimitEnabled','settingRateLimitPerMin','settingLoginFailLimit','settingLoginLockMinutes','settingCaptchaEnabled','settingCaptchaSiteKey','settingCaptchaSecretKey','settingCaptchaFreeCount']);
   createSettingsPane(host,'logging',['settingLogFileEnabled','settingLogFilePath','settingLogMaxSizeMB','settingLogMaxBackups','settingLogMaxAgeDays','settingLogCompress','settingAutoUpdateEnabled']);
   var commercePane=createSettingsPane(host,'commerce',['setEnabled','setDefaultExpiry','setManualExpiry']); commercePane.appendChild(channelsMount);
   var deliveryPane=createSettingsPane(host,'delivery',['setStorageType','setLocalPath','setMaxProof','setS3Endpoint','setS3Region','setS3Bucket','setS3Access','setS3Secret','setS3SSL']);
   deliveryPane.appendChild(createSettingsGridFromControls(['setEmailComplete']));
   var emailFields=createSettingsGridFromControls(['setSMTPHost','setSMTPPort','setSMTPUser','setSMTPPass','setSMTPFrom','setSMTPTLS','setEmailCard']);emailFields.id='emailSettingsFields';deliveryPane.appendChild(emailFields);
   source.remove();
+  // 面板已分配到各分类，容器本身不再需要
+  var panelSource=document.getElementById('settingsPanelSource'); if(panelSource)panelSource.remove();
   var settingsForm=document.getElementById('settingsForm'); if(settingsForm)settingsForm.remove();
   if(commerceMount.isConnected)commerceMount.remove();
   ['settingRateLimitEnabled','settingCaptchaEnabled','settingLogFileEnabled','setEmailComplete','setStorageType'].forEach(function(id){var el=document.getElementById(id);if(el)el.addEventListener('change',updateConditionalSettingsFields);});
