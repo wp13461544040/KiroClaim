@@ -442,6 +442,27 @@
                   <input class="k-input" type="number" id="settingRequestTimeoutSeconds" min="1" value="45">
                   <div class="settings-help">刷新、用量和模型接口的请求超时</div>
                 </div>
+                <div class="settings-toggle-card">
+                  <div>
+                    <strong>对接接口（OpenAPI）</strong>
+                    <small>供注册程序投递账号、查询库存，权限不含删除与导出凭证</small>
+                  </div>
+                  <input type="checkbox" class="k-checkbox" id="settingOpenApiEnabled">
+                </div>
+                <div class="settings-field">
+                  <div class="settings-label">对接 API Key</div>
+                  <div class="settings-help" id="openApiKeyState">未配置</div>
+                  <button type="button" class="ui-btn ui-btn-secondary ui-btn-sm" style="margin-top:8px" onclick="generateOpenApiKey()">生成新 Key</button>
+                  <div id="openApiKeyReveal" style="display:none;margin-top:10px">
+                    <code id="openApiKeyValue" style="display:block;padding:10px;background:var(--bg-subtle);border:1px solid var(--border);border-radius:6px;font-size:12px;word-break:break-all"></code>
+                    <div class="settings-help" style="margin-top:6px;color:#b45309">明文只显示这一次，请立即复制保存。生成新 Key 会使旧 Key 立即失效。</div>
+                  </div>
+                  <div class="settings-help" style="margin-top:8px">
+                    调用方式：请求头 <code>X-API-Key: &lt;your-key&gt;</code><br>
+                    投递账号 <code>POST /openapi/v1/accounts</code><br>
+                    查询库存 <code>GET /openapi/v1/stock</code>
+                  </div>
+                </div>
                 <div class="settings-field">
                   <label class="settings-label" for="settingLoginFailLimit">登录失败次数</label>
                   <input class="k-input" type="number" id="settingLoginFailLimit" min="1" value="5">

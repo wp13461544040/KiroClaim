@@ -24,6 +24,8 @@ type AppSettings struct {
 	HealthScanEnabled           bool
 	HealthScanIntervalMinutes   int
 	HealthScanBatchSize         int
+	OpenAPIEnabled              bool
+	OpenAPIKey                  string
 	RequestTimeoutSeconds       int
 	RateLimitEnabled            bool
 	RateLimitPerMin             int
@@ -50,6 +52,8 @@ type storedRuntimeSettings struct {
 	HealthScanEnabled           *bool   `json:"healthScanEnabled,omitempty"`
 	HealthScanIntervalMinutes   *int    `json:"healthScanIntervalMinutes,omitempty"`
 	HealthScanBatchSize         *int    `json:"healthScanBatchSize,omitempty"`
+	OpenAPIEnabled              *bool   `json:"openApiEnabled,omitempty"`
+	OpenAPIKey                  *string `json:"openApiKey,omitempty"`
 	RequestTimeoutSeconds       *int    `json:"requestTimeoutSeconds,omitempty"`
 	RateLimitEnabled            *bool   `json:"rateLimitEnabled,omitempty"`
 	RateLimitPerMin             *int    `json:"rateLimitPerMin,omitempty"`
@@ -84,6 +88,8 @@ func LoadSettingsFromEnv() {
 		HealthScanEnabled:          envBool("HEALTH_SCAN_ENABLED", true),
 		HealthScanIntervalMinutes:  envInt("HEALTH_SCAN_INTERVAL_MINUTES", 30),
 		HealthScanBatchSize:        envInt("HEALTH_SCAN_BATCH_SIZE", 1000),
+		OpenAPIEnabled:             envBool("OPEN_API_ENABLED", false),
+		OpenAPIKey:                 os.Getenv("OPEN_API_KEY"),
 		RequestTimeoutSeconds:      45,
 		RateLimitEnabled:            envBool("RATE_LIMIT_ENABLED", true),
 		RateLimitPerMin:             envInt("RATE_LIMIT_PER_MIN", 30),
@@ -146,6 +152,12 @@ func mergeStoredRuntimeSettings(s *AppSettings, stored storedRuntimeSettings) {
 	}
 	if stored.HealthScanBatchSize != nil {
 		s.HealthScanBatchSize = *stored.HealthScanBatchSize
+	}
+	if stored.OpenAPIEnabled != nil {
+		s.OpenAPIEnabled = *stored.OpenAPIEnabled
+	}
+	if stored.OpenAPIKey != nil {
+		s.OpenAPIKey = *stored.OpenAPIKey
 	}
 	if stored.RequestTimeoutSeconds != nil {
 		s.RequestTimeoutSeconds = *stored.RequestTimeoutSeconds
@@ -255,6 +267,8 @@ func persistRuntimeSettings(s AppSettings) error {
 		HealthScanEnabled:           boolPtr(s.HealthScanEnabled),
 		HealthScanIntervalMinutes:   intPtr(s.HealthScanIntervalMinutes),
 		HealthScanBatchSize:         intPtr(s.HealthScanBatchSize),
+		OpenAPIEnabled:              boolPtr(s.OpenAPIEnabled),
+		OpenAPIKey:                  stringPtr(s.OpenAPIKey),
 		RequestTimeoutSeconds:       intPtr(s.RequestTimeoutSeconds),
 		RateLimitEnabled:            boolPtr(s.RateLimitEnabled),
 		RateLimitPerMin:             intPtr(s.RateLimitPerMin),
@@ -346,6 +360,8 @@ func AdminSettings(c *gin.Context) {
 			"healthScanIntervalMinutes":   s.HealthScanIntervalMinutes,
 			"healthScanBatchSize":         s.HealthScanBatchSize,
 			"healthScanStatus":            HealthScanStatus(),
+			"openApiEnabled":              s.OpenAPIEnabled,
+			"openApiKeyConfigured":        strings.TrimSpace(s.OpenAPIKey) != "",
 			"requestTimeoutSeconds":       s.RequestTimeoutSeconds,
 			"rateLimitEnabled":            s.RateLimitEnabled,
 			"rateLimitPerMin":             s.RateLimitPerMin,
@@ -374,6 +390,8 @@ func UpdateAdminSettings(c *gin.Context) {
 		HealthScanEnabled           bool   `json:"healthScanEnabled"`
 		HealthScanIntervalMinutes   int    `json:"healthScanIntervalMinutes"`
 		HealthScanBatchSize         int    `json:"healthScanBatchSize"`
+		OpenAPIEnabled              bool   `json:"openApiEnabled"`
+		OpenAPIKey                  string `json:"openApiKey"`
 		RequestTimeoutSeconds       int    `json:"requestTimeoutSeconds"`
 		RateLimitEnabled            bool   `json:"rateLimitEnabled"`
 		RateLimitPerMin             int    `json:"rateLimitPerMin"`
@@ -450,6 +468,10 @@ func UpdateAdminSettings(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "定时巡检与派发检测不能同时关闭，否则账号状态无法更新，可能把已封禁账号发给用户"})
 		return
 	}
+	if key := strings.TrimSpace(req.OpenAPIKey); key != "" && len(key) < 32 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "API Key 长度至少 32 位，建议使用页面生成的随机 Key"})
+		return
+	}
 
 	settingsMu.RLock()
 	s := currentSettings
@@ -460,6 +482,11 @@ func UpdateAdminSettings(c *gin.Context) {
 	s.HealthScanEnabled = req.HealthScanEnabled
 	s.HealthScanIntervalMinutes = req.HealthScanIntervalMinutes
 	s.HealthScanBatchSize = req.HealthScanBatchSize
+	s.OpenAPIEnabled = req.OpenAPIEnabled
+	// 与验证码 Secret 同样处理：留空表示不修改，避免前端回显后被空值覆盖
+	if key := strings.TrimSpace(req.OpenAPIKey); key != "" {
+		s.OpenAPIKey = key
+	}
 	s.RequestTimeoutSeconds = req.RequestTimeoutSeconds
 	s.RateLimitEnabled = req.RateLimitEnabled
 	s.RateLimitPerMin = req.RateLimitPerMin
@@ -480,6 +507,11 @@ func UpdateAdminSettings(c *gin.Context) {
 	s.LogCompress = req.LogCompress
 	s.AutoUpdateEnabled = req.AutoUpdateEnabled
 	normalizeSettings(&s)
+
+	if s.OpenAPIEnabled && strings.TrimSpace(s.OpenAPIKey) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "启用对接接口前必须先生成 API Key，否则接口会失去鉴权保护"})
+		return
+	}
 
 	if s.CaptchaEnabled {
 		if strings.TrimSpace(s.CaptchaSiteKey) == "" {
@@ -551,6 +583,7 @@ func updateSecuritySettings(s AppSettings) {
 	updateUpstreamCheckConcurrency(s.MaxUpstreamCheckConcurrency)
 	// 让巡检循环立即按新的间隔重新计时，而不是等完当前周期。
 	notifyHealthScanSettingsChanged()
+	middleware.UpdateOpenAPIKey(s.OpenAPIEnabled, s.OpenAPIKey)
 
 	if ApiRateLimiter != nil {
 		if s.RateLimitEnabled && s.RateLimitPerMin > 0 {

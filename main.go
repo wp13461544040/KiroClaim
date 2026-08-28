@@ -109,6 +109,15 @@ func main() {
 
 	r.GET("/token/:code", middleware.RateLimitMiddleware(apiLimiter), captchaMw, minDelayMw, handler.GetToken)
 
+	// 机器对接接口：独立 API Key 鉴权，权限仅限投递账号与查询库存。
+	// 不复用管理员 JWT，对接方拿不到删除、导出凭证、改配置的能力。
+	openapi := r.Group("/openapi/v1", middleware.APIKeyAuth())
+	{
+		openapi.POST("/accounts", handler.OpenAPIImportAccounts)
+		openapi.GET("/accounts/import/:taskId", handler.OpenAPIImportStatus)
+		openapi.GET("/stock", handler.OpenAPIStock)
+	}
+
 	admin := r.Group("/admin", middleware.AdminAuth())
 	{
 		admin.GET("/me", handler.AdminMe)
@@ -144,6 +153,7 @@ func main() {
 
 		admin.GET("/settings", handler.AdminSettings)
 		admin.POST("/settings", handler.UpdateAdminSettings)
+		admin.POST("/settings/openapi-key", handler.GenerateOpenAPIKey)
 		admin.POST("/settings/reload", handler.ReloadSettingsHandler)
 		admin.GET("/version", handler.AdminVersion)
 		admin.POST("/version/update", handler.AdminVersionUpdate)

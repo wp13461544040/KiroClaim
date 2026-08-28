@@ -14,6 +14,13 @@ async function loadSettings() {
   document.getElementById('settingHealthScanBatchSize').value = Number.isFinite(Number(d.healthScanBatchSize)) ? Number(d.healthScanBatchSize) : 1000;
   renderHealthScanStatus(d.healthScanStatus);
   document.getElementById('settingRequestTimeoutSeconds').value = Number.isFinite(Number(d.requestTimeoutSeconds)) ? Number(d.requestTimeoutSeconds) : 45;
+  document.getElementById('settingOpenApiEnabled').checked = !!d.openApiEnabled;
+  var keyState = document.getElementById('openApiKeyState');
+  if (keyState) {
+    keyState.textContent = d.openApiKeyConfigured
+      ? 'Key 已配置（明文不回显，如遗失请生成新 Key）'
+      : '尚未配置，启用对接接口前需先生成';
+  }
   document.getElementById('settingRateLimitEnabled').checked = !!d.rateLimitEnabled;
   document.getElementById('settingRateLimitPerMin').value = d.rateLimitPerMin || 30;
   document.getElementById('settingLoginFailLimit').value = d.loginFailLimit || 5;
@@ -77,6 +84,27 @@ function renderHealthScanStatus(st) {
   el.innerHTML = lines.map(function(s) { return escapeHtml(s); }).join('<br>');
 }
 
+async function generateOpenApiKey() {
+  if (!confirm('生成新 Key 会立即使旧 Key 失效，已接入的程序需要同步更新。确认继续？')) return;
+
+  var r = await api('POST', '/admin/settings/openapi-key');
+  if (r.code !== 0 || !r.data || !r.data.apiKey) {
+    showToast(r.message || '生成失败', 'error');
+    return;
+  }
+
+  // 明文只在这一次响应里出现，展示出来供复制
+  var reveal = document.getElementById('openApiKeyReveal');
+  var value = document.getElementById('openApiKeyValue');
+  if (value) value.textContent = r.data.apiKey;
+  if (reveal) reveal.style.display = 'block';
+
+  var keyState = document.getElementById('openApiKeyState');
+  if (keyState) keyState.textContent = 'Key 已配置（明文不回显，如遗失请生成新 Key）';
+
+  showToast('已生成新 Key，请立即复制保存', 'success');
+}
+
 async function triggerHealthScan() {
   var r = await api('POST', '/admin/accounts/health-scan');
   if (r.code === 0) {
@@ -95,6 +123,7 @@ async function saveSettings() {
     healthScanEnabled: document.getElementById('settingHealthScanEnabled').checked,
     healthScanIntervalMinutes: readIntSetting('settingHealthScanIntervalMinutes', 30),
     healthScanBatchSize: readIntSetting('settingHealthScanBatchSize', 1000),
+    openApiEnabled: document.getElementById('settingOpenApiEnabled').checked,
     requestTimeoutSeconds: readIntSetting('settingRequestTimeoutSeconds', 45),
     rateLimitEnabled: document.getElementById('settingRateLimitEnabled').checked,
     rateLimitPerMin: readIntSetting('settingRateLimitPerMin', 30),
@@ -180,7 +209,7 @@ function initSettingsCategories() {
   var commerceMount=document.getElementById('commerceSettingsMount');
   if(!body||!source||!channelsMount||!commerceMount||!document.getElementById('settingsForm')) { return false; }
   var host=document.createElement('div'); host.id='settingsCategoryHost'; body.insertBefore(host,source);
-  createSettingsPane(host,'base',['settingMaxUpstreamCheckConcurrency','settingDispatchHealthCheckEnabled','settingHealthScanEnabled','settingHealthScanIntervalMinutes','settingHealthScanBatchSize','healthScanStatusText','settingRequestTimeoutSeconds','settingMinResponseMs','settingRateLimitEnabled','settingRateLimitPerMin','settingLoginFailLimit','settingLoginLockMinutes','settingCaptchaEnabled','settingCaptchaSiteKey','settingCaptchaSecretKey','settingCaptchaFreeCount']);
+  createSettingsPane(host,'base',['settingMaxUpstreamCheckConcurrency','settingDispatchHealthCheckEnabled','settingHealthScanEnabled','settingHealthScanIntervalMinutes','settingHealthScanBatchSize','healthScanStatusText','settingOpenApiEnabled','openApiKeyState','settingRequestTimeoutSeconds','settingMinResponseMs','settingRateLimitEnabled','settingRateLimitPerMin','settingLoginFailLimit','settingLoginLockMinutes','settingCaptchaEnabled','settingCaptchaSiteKey','settingCaptchaSecretKey','settingCaptchaFreeCount']);
   createSettingsPane(host,'logging',['settingLogFileEnabled','settingLogFilePath','settingLogMaxSizeMB','settingLogMaxBackups','settingLogMaxAgeDays','settingLogCompress','settingAutoUpdateEnabled']);
   var commercePane=createSettingsPane(host,'commerce',['setEnabled','setDefaultExpiry','setManualExpiry']); commercePane.appendChild(channelsMount);
   var deliveryPane=createSettingsPane(host,'delivery',['setStorageType','setLocalPath','setMaxProof','setS3Endpoint','setS3Region','setS3Bucket','setS3Access','setS3Secret','setS3SSL']);
