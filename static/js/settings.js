@@ -67,8 +67,9 @@ function renderHealthScanStatus(st) {
   lines.push(st.running ? '正在巡检中...' : '空闲');
   lines.push('上次开始：' + fmtScanTime(st.lastStartedAt));
   if (st.lastEndedAt) {
-    lines.push('上次结束：' + fmtScanTime(st.lastEndedAt) +
-      '（检查 ' + (st.lastChecked || 0) + ' 个，状态变更 ' + (st.lastFlipped || 0) + ' 个）');
+    var detail = '检查 ' + (st.lastChecked || 0) + ' 个，状态变更 ' + (st.lastFlipped || 0) + ' 个';
+    if (st.lastFailed) detail += '，未完成 ' + st.lastFailed + ' 个';
+    lines.push('上次结束：' + fmtScanTime(st.lastEndedAt) + '（' + detail + '）');
   }
 
   var pending = Number(st.pendingTotal) || 0;

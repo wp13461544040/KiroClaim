@@ -30,6 +30,7 @@ type healthScanState struct {
 	lastEnded   time.Time
 	lastChecked int
 	lastFlipped int
+	lastFailed  int
 	lastErr     string
 }
 
@@ -120,28 +121,42 @@ func runHealthScanTick(s AppSettings) {
 	healthScan.mu.Unlock()
 
 	epoch := healthScanEpoch.Add(1)
-	checked, flipped, err := scanAccountsOnce(s, epoch)
+	checked, flipped, failed, err := scanAccountsOnce(s, epoch)
 
 	healthScan.mu.Lock()
 	healthScan.running = false
 	healthScan.lastEnded = time.Now()
 	healthScan.lastChecked = checked
 	healthScan.lastFlipped = flipped
+	healthScan.lastFailed = failed
 	if err != nil {
 		healthScan.lastErr = err.Error()
 	}
+	started := healthScan.lastStarted
 	healthScan.mu.Unlock()
 
-	cost := time.Since(healthScan.lastStarted).Round(time.Second)
+	cost := time.Since(started).Round(time.Second)
 	if err != nil {
-		log.Printf("健康巡检结束(有错误): 检查 %d 个，状态变更 %d 个，耗时 %s，错误: %v",
-			checked, flipped, cost, err)
+		log.Printf("健康巡检结束(有错误): 成功 %d，未完成 %d，状态变更 %d，耗时 %s，错误: %v",
+			checked, failed, flipped, cost, err)
 		return
 	}
-	log.Printf("健康巡检结束: 检查 %d 个，状态变更 %d 个，耗时 %s", checked, flipped, cost)
-	if checked > 0 {
-		AddOpLog("refresh", "定时巡检账号 "+strconv.Itoa(checked)+" 个，状态变更 "+strconv.Itoa(flipped)+" 个", "system")
+	log.Printf("健康巡检结束: 成功 %d，未完成 %d，状态变更 %d，耗时 %s",
+		checked, failed, flipped, cost)
+	if checked > 0 || failed > 0 {
+		detail := "定时巡检账号 " + strconv.Itoa(checked) + " 个，状态变更 " + strconv.Itoa(flipped) + " 个"
+		if failed > 0 {
+			detail += "，未完成 " + strconv.Itoa(failed) + " 个"
+		}
+		AddOpLog("refresh", detail, "system")
 	}
+}
+
+// touchLastChecked 只推进 last_checked_at，不改动账号状态。
+// 用于检查未能完成的场景：让该账号在排序中让位，避免卡住巡检队首。
+func touchLastChecked(accountID uint) {
+	database.DB.Model(&model.Account{}).Where("id = ?", accountID).
+		Update("last_checked_at", time.Now())
 }
 
 // healthScanCandidates 取本轮要检查的账号。
@@ -161,7 +176,7 @@ func healthScanCandidates(budget int) ([]model.Account, error) {
 
 // scanAccountsOnce 取一批最久未检查的未分配账号做健康检查。
 // 返回实际检查数量和状态发生变化的数量。
-func scanAccountsOnce(s AppSettings, epoch uint64) (int, int, error) {
+func scanAccountsOnce(s AppSettings, epoch uint64) (int, int, int, error) {
 	budget := s.HealthScanBatchSize
 	if budget <= 0 {
 		budget = 1000
@@ -169,10 +184,10 @@ func scanAccountsOnce(s AppSettings, epoch uint64) (int, int, error) {
 
 	candidates, err := healthScanCandidates(budget)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 	if len(candidates) == 0 {
-		return 0, 0, nil
+		return 0, 0, 0, nil
 	}
 
 	// 巡检是后台任务，并发压到限流值的一半，给前台的提取和导入留出槽位。
@@ -181,7 +196,7 @@ func scanAccountsOnce(s AppSettings, epoch uint64) (int, int, error) {
 		workers = 1
 	}
 
-	var checked, flipped atomic.Int64
+	var checked, flipped, failed atomic.Int64
 	jobs := make(chan model.Account, workers*2)
 	var wg sync.WaitGroup
 
@@ -202,11 +217,25 @@ func scanAccountsOnce(s AppSettings, epoch uint64) (int, int, error) {
 				account := acc
 				// 单个账号异常不影响本轮其余账号
 				runSafe("health-scan-account", func() {
+					done := false
+					defer func() {
+						if done {
+							return
+						}
+						// 检查没能走完（写库失败或 panic）时也要推进时间戳。
+						// 候选是按 last_checked_at 升序取的，时间戳不动的账号会
+						// 永久停在队首，每轮都占一个配额位；这类账号累积到每轮
+						// 配额那么多时，排在后面的账号就再也轮不到检查了。
+						touchLastChecked(account.ID)
+						failed.Add(1)
+					}()
+
 					before := account.Status
 					result := checkAccountHealth(account)
 					if err := applyHealthResult(account.ID, result); err != nil {
 						return
 					}
+					done = true
 					checked.Add(1)
 					if result.status != before {
 						flipped.Add(1)
@@ -222,7 +251,7 @@ func scanAccountsOnce(s AppSettings, epoch uint64) (int, int, error) {
 	close(jobs)
 	wg.Wait()
 
-	return int(checked.Load()), int(flipped.Load()), nil
+	return int(checked.Load()), int(flipped.Load()), int(failed.Load()), nil
 }
 
 // HealthScanStatus 暴露巡检运行状态，供设置页展示。
@@ -234,6 +263,7 @@ func HealthScanStatus() map[string]interface{} {
 		"running":      healthScan.running,
 		"lastChecked":  healthScan.lastChecked,
 		"lastFlipped":  healthScan.lastFlipped,
+		"lastFailed":   healthScan.lastFailed,
 		"lastError":    healthScan.lastErr,
 		"pendingTotal": pendingHealthScanCount(),
 	}
