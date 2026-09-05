@@ -45,6 +45,8 @@ type AppSettings struct {
 	LogMaxAgeDays               int
 	LogCompress                 bool
 	AutoUpdateEnabled           bool
+	CustomerServiceWechat       string
+	AnnouncementText            string
 }
 
 type storedRuntimeSettings struct {
@@ -75,6 +77,8 @@ type storedRuntimeSettings struct {
 	LogMaxAgeDays               *int    `json:"logMaxAgeDays,omitempty"`
 	LogCompress                 *bool   `json:"logCompress,omitempty"`
 	AutoUpdateEnabled           *bool   `json:"autoUpdateEnabled,omitempty"`
+	CustomerServiceWechat       *string `json:"customerServiceWechat,omitempty"`
+	AnnouncementText            *string `json:"announcementText,omitempty"`
 }
 
 var (
@@ -223,6 +227,12 @@ func mergeStoredRuntimeSettings(s *AppSettings, stored storedRuntimeSettings) {
 	if stored.AutoUpdateEnabled != nil {
 		s.AutoUpdateEnabled = *stored.AutoUpdateEnabled
 	}
+	if stored.CustomerServiceWechat != nil {
+		s.CustomerServiceWechat = *stored.CustomerServiceWechat
+	}
+	if stored.AnnouncementText != nil {
+		s.AnnouncementText = *stored.AnnouncementText
+	}
 }
 
 func normalizeSettings(s *AppSettings) {
@@ -308,6 +318,8 @@ func persistRuntimeSettings(s AppSettings) error {
 		LogMaxAgeDays:               intPtr(s.LogMaxAgeDays),
 		LogCompress:                 boolPtr(s.LogCompress),
 		AutoUpdateEnabled:           boolPtr(s.AutoUpdateEnabled),
+		CustomerServiceWechat:       stringPtr(s.CustomerServiceWechat),
+		AnnouncementText:            stringPtr(s.AnnouncementText),
 	}
 	b, err := json.Marshal(payload)
 	if err != nil {
@@ -371,6 +383,19 @@ func CaptchaInfo(c *gin.Context) {
 	})
 }
 
+// AnnouncementInfo 返回客服微信和公告信息给前端
+func AnnouncementInfo(c *gin.Context) {
+	settingsMu.RLock()
+	defer settingsMu.RUnlock()
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": gin.H{
+			"customerServiceWechat": currentSettings.CustomerServiceWechat,
+			"announcementText":      currentSettings.AnnouncementText,
+		},
+	})
+}
+
 func AdminSettings(c *gin.Context) {
 	s := GetCurrentSettings()
 	c.JSON(http.StatusOK, gin.H{
@@ -403,6 +428,8 @@ func AdminSettings(c *gin.Context) {
 			"logMaxAgeDays":               s.LogMaxAgeDays,
 			"logCompress":                 s.LogCompress,
 			"autoUpdateEnabled":           s.AutoUpdateEnabled,
+			"customerServiceWechat":       s.CustomerServiceWechat,
+			"announcementText":            s.AnnouncementText,
 		},
 	})
 }
@@ -435,6 +462,8 @@ func UpdateAdminSettings(c *gin.Context) {
 		LogMaxAgeDays               int    `json:"logMaxAgeDays"`
 		LogCompress                 bool   `json:"logCompress"`
 		AutoUpdateEnabled           bool   `json:"autoUpdateEnabled"`
+		CustomerServiceWechat       string `json:"customerServiceWechat"`
+		AnnouncementText            string `json:"announcementText"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "请求格式错误"})
@@ -539,6 +568,8 @@ func UpdateAdminSettings(c *gin.Context) {
 	s.LogMaxAgeDays = req.LogMaxAgeDays
 	s.LogCompress = req.LogCompress
 	s.AutoUpdateEnabled = req.AutoUpdateEnabled
+	s.CustomerServiceWechat = strings.TrimSpace(req.CustomerServiceWechat)
+	s.AnnouncementText = strings.TrimSpace(req.AnnouncementText)
 	normalizeSettings(&s)
 
 	if s.OpenAPIEnabled && strings.TrimSpace(s.OpenAPIKey) == "" {

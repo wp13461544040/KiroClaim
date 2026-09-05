@@ -92,6 +92,7 @@ func main() {
 	r.POST("/admin/login", handler.AdminLogin)
 
 	r.GET("/api/captcha/info", handler.CaptchaInfo)
+	r.GET("/api/announcement/info", handler.AnnouncementInfo)
 
 	if mu, mp := os.Getenv("METRICS_USER"), os.Getenv("METRICS_PASS"); mu != "" && mp != "" {
 		r.GET("/admin/metrics", middleware.BasicAuthMiddleware(mu, mp), gin.WrapH(promhttp.Handler()))

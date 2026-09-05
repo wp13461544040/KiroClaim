@@ -39,6 +39,8 @@ async function loadSettings() {
   document.getElementById('settingLogMaxAgeDays').value = Number.isFinite(Number(d.logMaxAgeDays)) ? Number(d.logMaxAgeDays) : 30;
   document.getElementById('settingLogCompress').checked = !!d.logCompress;
   document.getElementById('settingAutoUpdateEnabled').checked = !!d.autoUpdateEnabled;
+  document.getElementById('settingCustomerServiceWechat').value = d.customerServiceWechat || '';
+  document.getElementById('settingAnnouncementText').value = d.announcementText || '';
   var state = document.getElementById('settingCaptchaSecretState');
   if (state) state.textContent = d.captchaSecretConfigured ? 'Secret Key 已配置，留空保存不会覆盖。' : 'Secret Key 尚未配置。';
   if (typeof updateConditionalSettingsFields === 'function') updateConditionalSettingsFields();
@@ -150,6 +152,11 @@ async function saveSettings() {
     logMaxBackups: readIntSetting('settingLogMaxBackups', 7),
     logMaxAgeDays: readIntSetting('settingLogMaxAgeDays', 30),
     logCompress: document.getElementById('settingLogCompress').checked,
+    autoUpdateEnabled: document.getElementById('settingAutoUpdateEnabled').checked,
+    customerServiceWechat: document.getElementById('settingCustomerServiceWechat').value.trim(),
+    announcementText: document.getElementById('settingAnnouncementText').value.trim(),
+    logMaxAgeDays: readIntSetting('settingLogMaxAgeDays', 30),
+    logCompress: document.getElementById('settingLogCompress').checked,
     autoUpdateEnabled: document.getElementById('settingAutoUpdateEnabled').checked
   };
   var result = document.getElementById('settingsResult');
@@ -231,7 +238,7 @@ function initSettingsCategories() {
   var commerceMount=document.getElementById('commerceSettingsMount');
   if(!body||!source||!channelsMount||!commerceMount||!document.getElementById('settingsForm')) { return false; }
   var host=document.createElement('div'); host.id='settingsCategoryHost'; body.insertBefore(host,source);
-  createSettingsPane(host,'base',['settingMaxUpstreamCheckConcurrency','settingDispatchHealthCheckEnabled','settingHealthScanEnabled','settingHealthScanIntervalMinutes','settingHealthScanBatchSize','settingHealthScanQuietStartHour','settingHealthScanQuietEndHour','settingOpenApiEnabled','settingRequestTimeoutSeconds','settingMinResponseMs','settingRateLimitEnabled','settingRateLimitPerMin','settingLoginFailLimit','settingLoginLockMinutes','settingCaptchaEnabled','settingCaptchaSiteKey','settingCaptchaSecretKey','settingCaptchaFreeCount']);
+  createSettingsPane(host,'base',['settingMaxUpstreamCheckConcurrency','settingDispatchHealthCheckEnabled','settingHealthScanEnabled','settingHealthScanIntervalMinutes','settingHealthScanBatchSize','settingHealthScanQuietStartHour','settingHealthScanQuietEndHour','settingOpenApiEnabled','settingRequestTimeoutSeconds','settingMinResponseMs','settingRateLimitEnabled','settingRateLimitPerMin','settingLoginFailLimit','settingLoginLockMinutes','settingCaptchaEnabled','settingCaptchaSiteKey','settingCaptchaSecretKey','settingCaptchaFreeCount','settingCustomerServiceWechat','settingAnnouncementText']);
   createSettingsPane(host,'logging',['settingLogFileEnabled','settingLogFilePath','settingLogMaxSizeMB','settingLogMaxBackups','settingLogMaxAgeDays','settingLogCompress','settingAutoUpdateEnabled']);
   var commercePane=createSettingsPane(host,'commerce',['setEnabled','setDefaultExpiry','setManualExpiry']); commercePane.appendChild(channelsMount);
   var deliveryPane=createSettingsPane(host,'delivery',['setStorageType','setLocalPath','setMaxProof','setS3Endpoint','setS3Region','setS3Bucket','setS3Access','setS3Secret','setS3SSL']);

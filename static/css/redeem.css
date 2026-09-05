@@ -1148,3 +1148,83 @@
       .header h1 { font-size: 19px; }
       .info, .status { font-size: 12px; }
     }
+
+    /* 公告栏样式 */
+    .announcement-bar {
+      width: 100%;
+      margin-bottom: 18px;
+      padding: 12px 16px;
+      background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 2px 8px rgba(217, 119, 6, 0.12);
+      animation: slideDown 0.4s var(--ease);
+    }
+
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .announcement-content {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .announcement-icon {
+      flex-shrink: 0;
+      width: 18px;
+      height: 18px;
+      margin-top: 1px;
+      color: #b45309;
+    }
+
+    .announcement-text {
+      flex: 1;
+      min-width: 0;
+      font-size: 13px;
+      line-height: 1.55;
+      color: #78350f;
+      font-weight: 500;
+    }
+
+    .announcement-label {
+      font-weight: 700;
+    }
+
+    .announcement-wechat {
+      font-weight: 700;
+      color: #92400e;
+    }
+
+    .announcement-separator {
+      margin: 0 6px;
+      color: #d97706;
+    }
+
+    @media (max-width: 640px) {
+      .announcement-bar {
+        margin-bottom: 16px;
+        padding: 10px 14px;
+      }
+
+      .announcement-text {
+        font-size: 12.5px;
+      }
+
+      .announcement-icon {
+        width: 16px;
+        height: 16px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .announcement-bar {
+        padding: 9px 12px;
+      }
+
+      .announcement-text {
+        font-size: 12px;
+        line-height: 1.6;
+      }
+    }
