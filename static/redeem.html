@@ -12,21 +12,21 @@
 </head>
 <body>
 
-  <div class="wrap">
-
-    <!-- 公告滚动区域 -->
-    <div class="announcement-bar" id="announcement-bar" style="display:none;">
-      <div class="announcement-content">
-        <svg class="announcement-icon" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z"/>
-        </svg>
-        <div class="announcement-text">
-          <span class="announcement-label" id="announcement-wechat-label" style="display:none;">客服微信: <span id="announcement-wechat"></span></span>
-          <span class="announcement-separator" id="announcement-separator" style="display:none;"> | </span>
-          <span id="announcement-message"></span>
-        </div>
+  <!-- 公告滚动区域 - 固定定位在顶部 -->
+  <div class="announcement-bar" id="announcement-bar" style="display:none;">
+    <div class="announcement-content">
+      <svg class="announcement-icon" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z"/>
+      </svg>
+      <div class="announcement-text">
+        <span class="announcement-label" id="announcement-wechat-label" style="display:none;">VX: <span id="announcement-wechat"></span></span>
+        <span class="announcement-separator" id="announcement-separator" style="display:none;"> | </span>
+        <span id="announcement-message"></span>
       </div>
     </div>
+  </div>
+
+  <div class="wrap">
 
     <div class="header">
       <h1>卡密兑换中心</h1>
@@ -120,14 +120,13 @@
         if (!wechat && !message) return;
         
         const bar = document.getElementById('announcement-bar');
-        const wechatLabel = document.getElementById('announcement-wechat-label');
         const wechatSpan = document.getElementById('announcement-wechat');
         const separator = document.getElementById('announcement-separator');
         const messageSpan = document.getElementById('announcement-message');
         
         if (wechat) {
           wechatSpan.textContent = wechat;
-          wechatLabel.style.display = 'inline';
+          wechatSpan.style.display = 'inline';
         }
         
         if (message) {
@@ -139,6 +138,7 @@
         }
         
         bar.style.display = 'block';
+        document.body.classList.add('has-announcement');
       } catch (e) {
         console.log('公告信息加载失败');
       }

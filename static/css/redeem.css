@@ -1149,15 +1149,23 @@
       .info, .status { font-size: 12px; }
     }
 
-    /* 公告栏样式 */
+    /* 公告栏样式 - 固定定位在顶部 */
     .announcement-bar {
+      position: fixed;
+      top: 10;
+      left: 0;
+      right: 0;
       width: 100%;
-      margin-bottom: 18px;
       padding: 12px 16px;
       background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-      border-radius: var(--radius-lg);
       box-shadow: 0 2px 8px rgba(217, 119, 6, 0.12);
       animation: slideDown 0.4s var(--ease);
+      z-index: 1000;
+    }
+    
+    /* 当显示公告时,给body添加顶部padding */
+    body.has-announcement {
+      padding-top: calc(max(24px, env(safe-area-inset-top)) + 60px);
     }
 
     @keyframes slideDown {
@@ -1188,11 +1196,7 @@
       font-weight: 500;
     }
 
-    .announcement-label {
-      font-weight: 700;
-    }
-
-    .announcement-wechat {
+    #announcement-wechat {
       font-weight: 700;
       color: #92400e;
     }
@@ -1204,7 +1208,6 @@
 
     @media (max-width: 640px) {
       .announcement-bar {
-        margin-bottom: 16px;
         padding: 10px 14px;
       }
 
@@ -1216,6 +1219,10 @@
         width: 16px;
         height: 16px;
       }
+      
+      body.has-announcement {
+        padding-top: calc(max(16px, env(safe-area-inset-top)) + 54px);
+      }
     }
 
     @media (max-width: 480px) {
@@ -1226,5 +1233,9 @@
       .announcement-text {
         font-size: 12px;
         line-height: 1.6;
+      }
+      
+      body.has-announcement {
+        padding-top: calc(max(14px, env(safe-area-inset-top)) + 50px);
       }
     }
