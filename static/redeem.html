@@ -120,13 +120,14 @@
         if (!wechat && !message) return;
         
         const bar = document.getElementById('announcement-bar');
+        const wechatLabel = document.getElementById('announcement-wechat-label');
         const wechatSpan = document.getElementById('announcement-wechat');
         const separator = document.getElementById('announcement-separator');
         const messageSpan = document.getElementById('announcement-message');
         
         if (wechat) {
           wechatSpan.textContent = wechat;
-          wechatSpan.style.display = 'inline';
+          wechatLabel.style.display = 'inline';
         }
         
         if (message) {
