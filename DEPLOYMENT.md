@@ -382,6 +382,9 @@ server {
     # 自动跳转到HTTPS（配置SSL证书后启用）
     # return 301 https://$server_name$request_uri;
     
+    # 账号批量导入、凭证上传的请求体较大，Nginx 默认 1MB 会返回 413 HTML 错误页
+    client_max_body_size 64m;
+
     location / {
         proxy_pass http://localhost:9527;
         proxy_set_header Host $host;

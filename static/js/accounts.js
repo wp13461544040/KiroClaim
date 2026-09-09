@@ -8,6 +8,12 @@ let accountKeyword = '';
 // 批量选择
 let selectedAccountIds = new Set();
 
+// 导入分批大小：单次请求体过大会被反向代理（Nginx 默认 1MB）用 HTML 错误页拒绝，
+// 前端主动切片，既绕开网关限制，也避免超大请求超时。
+const IMPORT_CHUNK_SIZE = 200;
+// 异常明细最多展示的条数，与后端单批上限保持一致。
+const IMPORT_BAD_DETAIL_LIMIT = 100;
+
 async function loadAccounts(page = 1) {
   accountKeyword = (document.getElementById('accountKeyword')?.value || '').trim();
   const createdFrom = document.getElementById('accountCreatedFrom')?.value || '';
@@ -560,93 +566,163 @@ async function doImport(btn) {
     正在提交导入任务...
   </div>`;
 
+  const list = Array.isArray(data) ? data : [data];
+  const chunks = [];
+  for (let i = 0; i < list.length; i += IMPORT_CHUNK_SIZE) {
+    chunks.push({ offset: i, items: list.slice(i, i + IMPORT_CHUNK_SIZE) });
+  }
+
+  const agg = { total: total, processed: 0, imported: 0, skippedDup: 0, skippedBad: 0, badDetails: [], badDetailMore: 0 };
+
   try {
-    const r = await api('POST', '/admin/accounts/import', Array.isArray(data) ? data : [data]);
-    if (r.code === 0) {
+    for (let ci = 0; ci < chunks.length; ci++) {
+      const chunk = chunks[ci];
+      const label = chunks.length > 1 ? `第 ${ci + 1}/${chunks.length} 批 · ` : '';
+
+      resultEl.innerHTML = renderImportProgress(`${label}正在提交导入任务...`, agg);
+
+      const r = await api('POST', '/admin/accounts/import', chunk.items);
+      if (r.code !== 0) {
+        throw new Error(r.message || r.msg || '未知错误');
+      }
+
       const taskId = r.data.taskId;
       btn.textContent = '导入中...';
-
       localStorage.setItem('importTaskId', taskId);
-      localStorage.setItem('importTaskTotal', total);
+      localStorage.setItem('importTaskTotal', chunk.items.length);
 
-      pollImportStatus(taskId, total, resultEl, btn);
+      const d = await waitImportTask(taskId, (cur) => {
+        resultEl.innerHTML = renderImportProgress(
+          `${label}正在处理：<strong style="color:#171717;margin:0 4px">${agg.processed + (cur.processed || 0)}</strong> / ${agg.total}`,
+          agg,
+          cur
+        );
+      });
+
+      agg.processed += d.processed || 0;
+      agg.imported += d.imported || 0;
+      agg.skippedDup += d.skippedDup || 0;
+      agg.skippedBad += d.skippedBad || 0;
+      agg.badDetailMore += Number(d.badDetailMore) || 0;
+      // 后端返回的行号是分批内的相对行号，这里换算回整份数据的真实行号。
+      (Array.isArray(d.badDetails) ? d.badDetails : []).forEach(item => {
+        if (agg.badDetails.length >= IMPORT_BAD_DETAIL_LIMIT) {
+          agg.badDetailMore++;
+          return;
+        }
+        agg.badDetails.push({ row: (Number(item.row) || 0) + chunk.offset, reason: item.reason });
+      });
+    }
+
+    localStorage.removeItem('importTaskId');
+    localStorage.removeItem('importTaskTotal');
+
+    resultEl.innerHTML = `<div style="padding:14px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:13px;line-height:2">
+      <div style="font-weight:600;font-size:14px;margin-bottom:6px">导入完成</div>
+      <div>成功写入：<strong>${agg.imported}</strong> 条</div>
+      <div>重复跳过：<strong>${agg.skippedDup}</strong> 条</div>
+      <div>检查不通过（封禁/异常）：<strong>${agg.skippedBad}</strong> 条</div>
+    </div>${renderImportBadDetails(agg)}`;
+
+    if (agg.imported > 0) {
+      document.getElementById('importJson').value = '';
+      loadAccounts(1);
+      loadAccountSubscriptionFilter();
+      showToast(`成功导入 ${agg.imported} 个账号`, 'success');
     } else {
-      resultEl.innerHTML = `<div style="padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:13px;color:#991b1b">提交失败：${escapeHtml(r.message || r.msg || '未知错误')}</div>`;
-      showToast('提交失败：' + (r.message || r.msg || '未知错误'), 'error');
-      btn.disabled = false;
-      btn.textContent = '执行导入';
+      showToast('没有新账号被导入', 'info');
     }
   } catch (e) {
-    resultEl.innerHTML = `<div style="padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:13px;color:#991b1b">提交出错：${escapeHtml(e.message)}</div>`;
-    showToast('提交出错', 'error');
+    localStorage.removeItem('importTaskId');
+    localStorage.removeItem('importTaskTotal');
+
+    const done = agg.imported + agg.skippedDup + agg.skippedBad > 0
+      ? `<div style="margin-top:6px">已完成部分：成功 ${agg.imported} / 重复 ${agg.skippedDup} / 失败 ${agg.skippedBad}</div>`
+      : '';
+    resultEl.innerHTML = `<div style="padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:13px;color:#991b1b">导入出错：${escapeHtml(e.message)}${done}</div>`;
+    showToast('导入出错', 'error');
+  } finally {
     btn.disabled = false;
     btn.textContent = '执行导入';
   }
 }
 
-// 轮询导入任务状态
-async function pollImportStatus(taskId, total, resultEl, btn) {
-  const checkStatus = async () => {
-    try {
-      const r = await api('GET', `/admin/accounts/import/status/${taskId}`);
-      if (r.code === 0) {
-        const d = r.data;
+function renderImportProgress(text, agg, cur) {
+  const imported = agg.imported + ((cur && cur.imported) || 0);
+  const dup = agg.skippedDup + ((cur && cur.skippedDup) || 0);
+  const bad = agg.skippedBad + ((cur && cur.skippedBad) || 0);
+  return `<div style="display:flex;align-items:center;gap:10px;padding:12px;background:#fafafa;border:1px solid #eaeaea;border-radius:6px;font-size:13px;color:#666">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite;flex-shrink:0">
+      <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+    </svg>
+    ${text}
+    (成功: ${imported}, 重复: ${dup}, 失败: ${bad})
+  </div>`;
+}
 
-        resultEl.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:12px;background:#fafafa;border:1px solid #eaeaea;border-radius:6px;font-size:13px;color:#666">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite;flex-shrink:0">
-            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-          </svg>
-          正在处理：<strong style="color:#171717;margin:0 4px">${d.processed}</strong> / ${d.total}
-          (成功: ${d.imported}, 重复: ${d.skippedDup}, 失败: ${d.skippedBad})
-        </div>`;
-
-        if (d.status === 'completed') {
-          resultEl.innerHTML = `<div style="padding:14px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:13px;line-height:2">
-            <div style="font-weight:600;font-size:14px;margin-bottom:6px">导入完成</div>
-            <div>成功写入：<strong>${d.imported}</strong> 条</div>
-            <div>重复跳过：<strong>${d.skippedDup}</strong> 条</div>
-            <div>检查不通过（封禁/异常）：<strong>${d.skippedBad}</strong> 条</div>
-          </div>${renderImportBadDetails(d)}`;
-
-          localStorage.removeItem('importTaskId');
-          localStorage.removeItem('importTaskTotal');
-
-          if (d.imported > 0) {
-            document.getElementById('importJson').value = '';
-            loadAccounts(1);
-            loadAccountSubscriptionFilter();
-            showToast(`成功导入 ${d.imported} 个账号`, 'success');
-          } else {
-            showToast('没有新账号被导入', 'info');
-          }
-
-          btn.disabled = false;
-          btn.textContent = '执行导入';
-        } else if (d.status === 'failed') {
-          resultEl.innerHTML = `<div style="padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:13px;color:#991b1b">导入失败</div>`;
-          showToast('导入失败', 'error');
-
-          localStorage.removeItem('importTaskId');
-          localStorage.removeItem('importTaskTotal');
-
-          btn.disabled = false;
-          btn.textContent = '执行导入';
-        } else {
-          setTimeout(checkStatus, 1000);
-        }
-      } else {
-        resultEl.innerHTML = `<div style="padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:13px;color:#991b1b">查询状态失败</div>`;
-        btn.disabled = false;
-        btn.textContent = '执行导入';
+// 轮询单个导入任务，直到完成或失败。
+function waitImportTask(taskId, onProgress) {
+  return new Promise((resolve, reject) => {
+    const check = async () => {
+      let r;
+      try {
+        r = await api('GET', `/admin/accounts/import/status/${taskId}`);
+      } catch (e) {
+        reject(new Error('查询任务状态出错：' + e.message));
+        return;
       }
-    } catch (e) {
-      resultEl.innerHTML = `<div style="padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:13px;color:#991b1b">查询状态出错</div>`;
-      btn.disabled = false;
-      btn.textContent = '执行导入';
-    }
-  };
 
-  checkStatus();
+      if (r.code !== 0) {
+        reject(new Error(r.message || r.msg || '查询任务状态失败'));
+        return;
+      }
+
+      const d = r.data;
+      if (typeof onProgress === 'function') onProgress(d);
+
+      if (d.status === 'completed') {
+        resolve(d);
+      } else if (d.status === 'failed') {
+        reject(new Error('后端任务执行失败'));
+      } else {
+        setTimeout(check, 1000);
+      }
+    };
+    check();
+  });
+}
+
+// 恢复上次未完成的导入任务展示。
+function pollImportStatus(taskId, total, resultEl, btn) {
+  const agg = { total: total, processed: 0, imported: 0, skippedDup: 0, skippedBad: 0, badDetails: [], badDetailMore: 0 };
+
+  waitImportTask(taskId, (cur) => {
+    resultEl.innerHTML = renderImportProgress(
+      `正在处理：<strong style="color:#171717;margin:0 4px">${cur.processed}</strong> / ${cur.total}`,
+      agg,
+      cur
+    );
+  }).then((d) => {
+    resultEl.innerHTML = `<div style="padding:14px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:13px;line-height:2">
+      <div style="font-weight:600;font-size:14px;margin-bottom:6px">导入完成</div>
+      <div>成功写入：<strong>${d.imported}</strong> 条</div>
+      <div>重复跳过：<strong>${d.skippedDup}</strong> 条</div>
+      <div>检查不通过（封禁/异常）：<strong>${d.skippedBad}</strong> 条</div>
+    </div>${renderImportBadDetails(d)}`;
+
+    if (d.imported > 0) {
+      loadAccounts(1);
+      loadAccountSubscriptionFilter();
+      showToast(`成功导入 ${d.imported} 个账号`, 'success');
+    }
+  }).catch((e) => {
+    resultEl.innerHTML = `<div style="padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:13px;color:#991b1b">${escapeHtml(e.message)}</div>`;
+  }).finally(() => {
+    localStorage.removeItem('importTaskId');
+    localStorage.removeItem('importTaskTotal');
+    btn.disabled = false;
+    btn.textContent = '执行导入';
+  });
 }
 
 
