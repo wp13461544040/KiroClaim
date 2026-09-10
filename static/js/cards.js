@@ -10,6 +10,32 @@ let genSubscription = '';
 let genShopImageData = '';
 let selectedCardIds = new Set();
 
+// 格式化复制单个卡密
+async function copyCardFormatted(code) {
+  try {
+    const r = await api('GET', '/admin/settings');
+    const template = r.code === 0 && r.data?.cardCopyTemplate ? r.data.cardCopyTemplate : '';
+    const text = template ? `卡密: ${code}\n\n${template}` : code;
+    copyToClipboard(text);
+  } catch (err) {
+    copyToClipboard(code);
+  }
+}
+
+// 批量格式化复制
+async function copyAllFormatted() {
+  const codesText = document.getElementById('generatedCodes').value;
+  const codes = codesText.split('\n').filter(c => c.trim());
+  try {
+    const r = await api('GET', '/admin/settings');
+    const template = r.code === 0 && r.data?.cardCopyTemplate ? r.data.cardCopyTemplate : '';
+    const formatted = codes.map(code => template ? `卡密: ${code}\n\n${template}` : code).join('\n\n---\n\n');
+    copyToClipboard(formatted);
+  } catch (err) {
+    copyToClipboard(codesText);
+  }
+}
+
 function escapeHtml(value) {
   return String(value == null ? '' : value).replace(/[&<>"']/g, function(c) {
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
@@ -95,6 +121,7 @@ async function loadCards(page = 1) {
       <td data-label="操作">
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="ui-btn ui-btn-secondary ui-btn-sm" onclick="showCardLogs(${c.ID}, '${escapeAttr(c.Code)}')">详情</button>
+          <button class="ui-btn ui-btn-primary ui-btn-sm" onclick="copyCardFormatted('${escapeAttr(c.Code)}')">复制</button>
           <button class="ui-btn ui-btn-danger ui-btn-sm" onclick="deleteCard(${c.ID})">删除</button>
         </div>
       </td>
@@ -412,7 +439,10 @@ async function doGenerate() {
     const codes = (r.data?.codes || []).join('\n');
     resultEl.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <span style="font-size:13px;color:var(--text-muted)">生成成功，共 ${r.data?.codes?.length ?? count} 张：</span>
-        <button class="ui-btn ui-btn-secondary ui-btn-sm" onclick="copyToClipboard(document.getElementById('generatedCodes').value)">一键复制全部</button>
+        <div style="display:flex;gap:6px">
+          <button class="ui-btn ui-btn-secondary ui-btn-sm" onclick="copyToClipboard(document.getElementById('generatedCodes').value)">一键复制全部</button>
+          <button class="ui-btn ui-btn-primary ui-btn-sm" onclick="copyAllFormatted()">格式化复制全部</button>
+        </div>
       </div>
       <textarea class="k-input" id="generatedCodes" rows="8" readonly style="font-family:monospace;font-size:12px">${escapeHtml(codes)}</textarea>`;
     loadCards(1);

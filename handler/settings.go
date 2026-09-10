@@ -47,6 +47,7 @@ type AppSettings struct {
 	AutoUpdateEnabled           bool
 	CustomerServiceWechat       string
 	AnnouncementText            string
+	CardCopyTemplate            string
 }
 
 type storedRuntimeSettings struct {
@@ -79,6 +80,7 @@ type storedRuntimeSettings struct {
 	AutoUpdateEnabled           *bool   `json:"autoUpdateEnabled,omitempty"`
 	CustomerServiceWechat       *string `json:"customerServiceWechat,omitempty"`
 	AnnouncementText            *string `json:"announcementText,omitempty"`
+	CardCopyTemplate            *string `json:"cardCopyTemplate,omitempty"`
 }
 
 var (
@@ -233,6 +235,9 @@ func mergeStoredRuntimeSettings(s *AppSettings, stored storedRuntimeSettings) {
 	if stored.AnnouncementText != nil {
 		s.AnnouncementText = *stored.AnnouncementText
 	}
+	if stored.CardCopyTemplate != nil {
+		s.CardCopyTemplate = *stored.CardCopyTemplate
+	}
 }
 
 func normalizeSettings(s *AppSettings) {
@@ -320,6 +325,7 @@ func persistRuntimeSettings(s AppSettings) error {
 		AutoUpdateEnabled:           boolPtr(s.AutoUpdateEnabled),
 		CustomerServiceWechat:       stringPtr(s.CustomerServiceWechat),
 		AnnouncementText:            stringPtr(s.AnnouncementText),
+		CardCopyTemplate:            stringPtr(s.CardCopyTemplate),
 	}
 	b, err := json.Marshal(payload)
 	if err != nil {
@@ -430,6 +436,7 @@ func AdminSettings(c *gin.Context) {
 			"autoUpdateEnabled":           s.AutoUpdateEnabled,
 			"customerServiceWechat":       s.CustomerServiceWechat,
 			"announcementText":            s.AnnouncementText,
+			"cardCopyTemplate":            s.CardCopyTemplate,
 		},
 	})
 }
@@ -464,6 +471,7 @@ func UpdateAdminSettings(c *gin.Context) {
 		AutoUpdateEnabled           bool   `json:"autoUpdateEnabled"`
 		CustomerServiceWechat       string `json:"customerServiceWechat"`
 		AnnouncementText            string `json:"announcementText"`
+		CardCopyTemplate            string `json:"cardCopyTemplate"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "请求格式错误"})
@@ -570,6 +578,7 @@ func UpdateAdminSettings(c *gin.Context) {
 	s.AutoUpdateEnabled = req.AutoUpdateEnabled
 	s.CustomerServiceWechat = strings.TrimSpace(req.CustomerServiceWechat)
 	s.AnnouncementText = strings.TrimSpace(req.AnnouncementText)
+	s.CardCopyTemplate = strings.TrimSpace(req.CardCopyTemplate)
 	normalizeSettings(&s)
 
 	if s.OpenAPIEnabled && strings.TrimSpace(s.OpenAPIKey) == "" {
