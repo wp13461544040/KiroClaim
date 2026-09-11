@@ -247,7 +247,8 @@ func isDispatchable(acc *model.Account, subscription string) bool {
 	if acc.Used || acc.Status != model.AccountStatusActive {
 		return false
 	}
-	if acc.CreditUsed != 0 {
+	// 检查额度：无限制额度(credit_limit=0) 或 有剩余额度(credit_used < credit_limit)
+	if acc.CreditLimit != 0 && acc.CreditUsed >= acc.CreditLimit {
 		return false
 	}
 	if acc.AccessToken == "" {
