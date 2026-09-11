@@ -23,6 +23,7 @@ async function loadAccounts(page = 1) {
   let url = `/admin/accounts?page=${page}&size=${size}&used=false`;
   if (accountStatusFilter) url += `&status=${accountStatusFilter}`;
   if (accountSubscriptionFilter) url += `&subscription=${encodeURIComponent(accountSubscriptionFilter)}`;
+  if (accountCreditExhaustedFilter) url += '&credit_exhausted=true';
   if (accountKeyword) url += `&keyword=${encodeURIComponent(accountKeyword)}`;
   if (createdFrom) url += `&created_from=${createdFrom}`;
   if (createdTo) url += `&created_to=${createdTo}`;
@@ -727,8 +728,27 @@ function pollImportStatus(taskId, total, resultEl, btn) {
 
 
 // 账号状态筛选
+// 新增：支持 credit_exhausted 参数（额度已用）
+let accountCreditExhaustedFilter = '';
+
 function selectAccountStatus(value, text) {
   accountStatusFilter = value;
+  accountCreditExhaustedFilter = ''; // 清空额度筛选
+  document.getElementById('accountStatusText').textContent = text;
+
+  document.querySelectorAll('#accountStatusDropdown .k-dropdown-item').forEach(item => {
+    item.classList.remove('selected');
+  });
+  event.target.classList.add('selected');
+
+  toggleDropdown('accountStatusDropdown');
+  loadAccounts(1);
+}
+
+// 新增：专门用于筛选额度已用的函数
+function selectAccountCreditExhausted(text) {
+  accountStatusFilter = ''; // 清空健康状态筛选
+  accountCreditExhaustedFilter = 'true';
   document.getElementById('accountStatusText').textContent = text;
 
   document.querySelectorAll('#accountStatusDropdown .k-dropdown-item').forEach(item => {
@@ -758,6 +778,7 @@ function selectAccountSubscription(value, text) {
 function resetAccountFilters() {
   accountStatusFilter = '';
   accountSubscriptionFilter = '';
+  accountCreditExhaustedFilter = '';
   accountKeyword = '';
 
   const keywordInput = document.getElementById('accountKeyword');

@@ -400,6 +400,7 @@ func ListAccounts(c *gin.Context) {
 	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
 	statusFilter := c.Query("status")
 	usedFilter := c.Query("used")
+	creditExhausted := c.Query("credit_exhausted") // 新增：筛选额度已耗尽的账号
 	keyword := c.Query("keyword")
 	subscriptionFilter := c.Query("subscription")
 	createdFrom := c.Query("created_from")
@@ -447,6 +448,10 @@ func ListAccounts(c *gin.Context) {
 		q = q.Where("used = ?", true)
 	} else if usedFilter == "false" {
 		q = q.Where("used = ?", false)
+	}
+	// 按额度是否耗尽筛选（credit_exhausted=true 表示额度已用完）
+	if creditExhausted == "true" {
+		q = q.Where("credit_used > ? AND (credit_limit = ? OR credit_used >= credit_limit)", 0, 0)
 	}
 	// 按订阅筛选。
 	if subscriptionFilter != "" {
@@ -672,11 +677,13 @@ func PoolStats(c *gin.Context) {
 		}
 	}
 
-	// 可用账号 = 未分配 且 状态正常 且 额度未消耗（与 OpenAPI 保持一致）
+	// 可用账号 = 未分配 且 状态正常 且 额度未耗尽
+	// 额度未耗尽的判断：credit_limit = 0 (无限制) 或 credit_used < credit_limit (有剩余)
 	var available int64
 	database.DB.Model(&model.Account{}).
-		Where("used = ? AND status = ? AND credit_used = ?",
-			false, model.AccountStatusActive, 0).
+		Where("used = ? AND status = ?",
+			false, model.AccountStatusActive).
+		Where("credit_limit = ? OR credit_used < credit_limit", 0).
 		Count(&available)
 
 	var accountSubscriptions []string
