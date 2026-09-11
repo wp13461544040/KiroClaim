@@ -241,7 +241,8 @@ func buildHealthUpdates(r healthResult, now time.Time) map[string]interface{} {
 	if r.subscription != "" {
 		updates["subscription"] = r.subscription
 	}
-	if r.creditLimit > 0 {
+	// 始终更新额度信息，即使 creditLimit = 0（额度耗尽账号也需要正确记录 credit_used）
+	if r.creditLimit > 0 || r.creditUsed > 0 {
 		updates["credit_used"] = r.creditUsed
 		updates["credit_limit"] = r.creditLimit
 	}

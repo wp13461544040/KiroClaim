@@ -13,9 +13,22 @@ import (
 // CleanupUsedCreditAccountsManual 手动触发清理（用于管理后台）
 // 只清理未分配（used = false）的账号，已分配账号不受影响。
 // 使用单条批量 UPDATE，避免逐个账号读取再更新。
+//
+// 清理条件（需同时满足）：
+//  1. used = false（未分配）
+//  2. status = active（状态正常）
+//  3. credit_used > 0（已消耗额度）
+//  4. credit_limit = 0（额度耗尽）或 credit_used >= credit_limit（已达上限）
+//  5. last_checked_at 在最近 24 小时内（确保是刷新后的最新数据）
 func CleanupUsedCreditAccountsManual() (int, error) {
+	// 计算 24 小时前的时间点
+	threshold := time.Now().Add(-24 * time.Hour)
+	
 	result := database.DB.Model(&model.Account{}).
-		Where("used = ? AND credit_used > ? AND status = ?", false, 0, model.AccountStatusActive).
+		Where("used = ? AND status = ?", false, model.AccountStatusActive).
+		Where("credit_used > ?", 0).
+		Where("(credit_limit = ? OR credit_used >= credit_limit)", 0).
+		Where("last_checked_at > ?", threshold).
 		Updates(map[string]interface{}{
 			"status":  model.AccountStatusUsed,
 			"used":    true,
