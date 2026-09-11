@@ -27,7 +27,7 @@ func CleanupUsedCreditAccountsManual() (int, error) {
 	result := database.DB.Model(&model.Account{}).
 		Where("used = ? AND status = ?", false, model.AccountStatusActive).
 		Where("credit_used > ?", 0).
-		Where("(credit_limit = ? OR credit_used >= credit_limit)", 0).
+		Where("credit_limit = 0 OR credit_used >= credit_limit").
 		Where("last_checked_at > ?", threshold).
 		Updates(map[string]interface{}{
 			"status":  model.AccountStatusUsed,

@@ -451,7 +451,7 @@ func ListAccounts(c *gin.Context) {
 	}
 	// 按额度是否耗尽筛选（credit_exhausted=true 表示额度已用完）
 	if creditExhausted == "true" {
-		q = q.Where("credit_used > ? AND (credit_limit = ? OR credit_used >= credit_limit)", 0, 0)
+		q = q.Where("credit_used > 0 AND (credit_limit = 0 OR credit_used >= credit_limit)")
 	}
 	// 按订阅筛选。
 	if subscriptionFilter != "" {
@@ -683,7 +683,7 @@ func PoolStats(c *gin.Context) {
 	database.DB.Model(&model.Account{}).
 		Where("used = ? AND status = ?",
 			false, model.AccountStatusActive).
-		Where("credit_limit = ? OR credit_used < credit_limit", 0).
+		Where("credit_limit = 0 OR credit_used < credit_limit").
 		Count(&available)
 
 	var accountSubscriptions []string

@@ -153,7 +153,7 @@ func OpenAPIStock(c *gin.Context) {
 	var available, total, suspended, assigned int64
 	base().Where("used = ? AND status = ?",
 		false, model.AccountStatusActive).
-		Where("credit_limit = ? OR credit_used < credit_limit", 0).
+		Where("credit_limit = 0 OR credit_used < credit_limit").
 		Count(&available)
 	base().Count(&total)
 	base().Where("status = ?", model.AccountStatusSuspended).Count(&suspended)
@@ -171,9 +171,9 @@ func OpenAPIStock(c *gin.Context) {
 		byType := make([]subscriptionStock, 0, 8)
 		if err := database.DB.Model(&model.Account{}).
 			Select("subscription, "+
-				"SUM(CASE WHEN used = ? AND status = ? AND (credit_limit = ? OR credit_used < credit_limit) THEN 1 ELSE 0 END) AS available, "+
+				"SUM(CASE WHEN used = ? AND status = ? AND (credit_limit = 0 OR credit_used < credit_limit) THEN 1 ELSE 0 END) AS available, "+
 				"COUNT(*) AS total",
-				false, model.AccountStatusActive, 0).
+				false, model.AccountStatusActive).
 			Where("subscription != ''").
 			Group("subscription").
 			Scan(&byType).Error; err == nil {

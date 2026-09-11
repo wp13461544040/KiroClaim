@@ -274,7 +274,7 @@ func popAccount(excludeID uint, subscription string) (*model.Account, error) {
 
 	q := database.DB.Where("used = ?", false).
 		Where("status = ?", model.AccountStatusActive).
-		Where("credit_limit = ? OR credit_used < credit_limit", 0)
+		Where("credit_limit = 0 OR credit_used < credit_limit")
 	if excludeID > 0 {
 		q = q.Where("id != ?", excludeID)
 	}
@@ -438,7 +438,7 @@ func popMultipleAccounts(n int, subscription string) ([]*model.Account, error) {
 
 	q := database.DB.Model(&model.Account{}).Where("used = ?", false).
 		Where("status = ?", model.AccountStatusActive).
-		Where("credit_limit = ? OR credit_used < credit_limit", 0)
+		Where("credit_limit = 0 OR credit_used < credit_limit")
 	q = filterAccountSubscriptionQuery(q, subscription)
 
 	var available int64
