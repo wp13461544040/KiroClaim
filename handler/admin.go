@@ -449,9 +449,9 @@ func ListAccounts(c *gin.Context) {
 	} else if usedFilter == "false" {
 		q = q.Where("used = ?", false)
 	}
-	// 按额度是否耗尽筛选（credit_exhausted=true 表示额度已用完）
+	// 按额度是否使用筛选（credit_exhausted=true 表示额度已使用，只要 credit_used > 0 就算）
 	if creditExhausted == "true" {
-		q = q.Where("credit_used > 0 AND (credit_limit = 0 OR credit_used >= credit_limit)")
+		q = q.Where("credit_used > 0")
 	}
 	// 按订阅筛选。
 	if subscriptionFilter != "" {
