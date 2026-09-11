@@ -18,7 +18,7 @@ import (
 //  1. used = false（未分配）
 //  2. status = active（状态正常）
 //  3. credit_used > 0（已消耗额度）
-//  4. credit_limit = 0（额度耗尽）或 credit_used >= credit_limit（已达上限）
+//  4. credit_used > 0（只要额度使用过就清理）
 //  5. last_checked_at 在最近 24 小时内（确保是刷新后的最新数据）
 func CleanupUsedCreditAccountsManual() (int, error) {
 	// 计算 24 小时前的时间点
@@ -27,7 +27,6 @@ func CleanupUsedCreditAccountsManual() (int, error) {
 	result := database.DB.Model(&model.Account{}).
 		Where("used = ? AND status = ?", false, model.AccountStatusActive).
 		Where("credit_used > ?", 0).
-		Where("credit_limit = 0 OR credit_used >= credit_limit").
 		Where("last_checked_at > ?", threshold).
 		Updates(map[string]interface{}{
 			"status":  model.AccountStatusUsed,
@@ -48,7 +47,7 @@ func CleanupUsedCreditAccountsAPI(c *gin.Context) {
 		return
 	}
 
-	AddOpLogWithCtx(c, "cleanup", "手动清理额度已用账号 "+strconv.Itoa(count)+" 个", "admin")
+	AddOpLogWithCtx(c, "cleanup", "手动清理使用过额度的账号 "+strconv.Itoa(count)+" 个", "admin")
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "清理完成",
