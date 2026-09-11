@@ -148,10 +148,13 @@ func OpenAPIStock(c *gin.Context) {
 		return q
 	}
 
-	// 可用 = 未分配 且 状态正常 且 额度未消耗，与派发时的筛选条件保持一致
+	// 可用 = 未分配 且 状态正常 且 额度未耗尽
+	// 额度未耗尽的判断：credit_limit = 0 (无限制) 或 credit_used < credit_limit (有剩余)
 	var available, total, suspended, assigned int64
-	base().Where("used = ? AND status = ? AND credit_used = ?",
-		false, model.AccountStatusActive, 0).Count(&available)
+	base().Where("used = ? AND status = ?",
+		false, model.AccountStatusActive).
+		Where("credit_limit = ? OR credit_used < credit_limit", 0).
+		Count(&available)
 	base().Count(&total)
 	base().Where("status = ?", model.AccountStatusSuspended).Count(&suspended)
 	base().Where("used = ?", true).Count(&assigned)
@@ -168,7 +171,7 @@ func OpenAPIStock(c *gin.Context) {
 		byType := make([]subscriptionStock, 0, 8)
 		if err := database.DB.Model(&model.Account{}).
 			Select("subscription, "+
-				"SUM(CASE WHEN used = ? AND status = ? AND credit_used = ? THEN 1 ELSE 0 END) AS available, "+
+				"SUM(CASE WHEN used = ? AND status = ? AND (credit_limit = ? OR credit_used < credit_limit) THEN 1 ELSE 0 END) AS available, "+
 				"COUNT(*) AS total",
 				false, model.AccountStatusActive, 0).
 			Where("subscription != ''").
