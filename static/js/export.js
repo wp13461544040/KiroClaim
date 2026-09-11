@@ -213,29 +213,8 @@ async function exportCards(format, exportType) {
 // 显示自定义导出数量模态框
 function showExportCustomModal() {
   document.getElementById('exportCustomModal').style.display = 'flex';
-  document.getElementById('exportCustomEnabled').checked = false;
   document.getElementById('exportCustomCount').value = '10';
-  document.getElementById('exportCustomCount').disabled = true;
-  document.getElementById('exportCustomInputGroup').style.opacity = '0.5';
-  document.getElementById('exportCustomInputGroup').style.pointerEvents = 'none';
-}
-
-// 切换自定义数量输入框的启用状态
-function toggleExportCustomInput() {
-  const checkbox = document.getElementById('exportCustomEnabled');
-  const input = document.getElementById('exportCustomCount');
-  const inputGroup = document.getElementById('exportCustomInputGroup');
-  
-  if (checkbox.checked) {
-    input.disabled = false;
-    inputGroup.style.opacity = '1';
-    inputGroup.style.pointerEvents = 'auto';
-    input.focus();
-  } else {
-    input.disabled = true;
-    inputGroup.style.opacity = '0.5';
-    inputGroup.style.pointerEvents = 'none';
-  }
+  document.getElementById('exportCustomCount').focus();
 }
 
 // 关闭自定义导出数量模态框
@@ -243,49 +222,60 @@ function closeExportCustomModal() {
   document.getElementById('exportCustomModal').style.display = 'none';
 }
 
-// 执行自定义数量导出（先选中再导出）
+// 执行自定义数量选中（只选中，不导出）
 async function doExportCustom() {
-  const enabled = document.getElementById('exportCustomEnabled').checked;
   const countInput = document.getElementById('exportCustomCount');
+  const count = parseInt(countInput.value);
   
-  closeExportCustomModal();
-
-  // 构造导出 URL
-  var url = '/admin/accounts/export?used=false';
-  
-  // 如果启用了自定义数量
-  if (enabled) {
-    const count = parseInt(countInput.value);
-    
-    if (!count || count < 1) {
-      showToast('请输入有效的导出数量（至少为1）', 'error');
-      return;
-    }
-    
-    if (count > 10000) {
-      showToast('单次导出数量不能超过 10000', 'error');
-      return;
-    }
-    
-    url += '&limit=' + count;
+  if (!count || count < 1) {
+    showToast('请输入有效的选中数量（至少为1）', 'error');
+    return;
   }
   
-  // 添加筛选条件
-  if (accountStatusFilter) url += '&status=' + accountStatusFilter;
-  if (accountSubscriptionFilter) url += '&subscription=' + encodeURIComponent(accountSubscriptionFilter);
-  if (accountKeyword) url += '&keyword=' + encodeURIComponent(accountKeyword);
-
-  var dateStr = new Date().toISOString().slice(0, 10);
+  if (count > 10000) {
+    showToast('单次选中数量不能超过 10000', 'error');
+    return;
+  }
+  
+  closeExportCustomModal();
+  
   try {
-    showToast('正在导出，请稍候...', 'info');
-    await downloadExport(url, 'accounts_' + dateStr + '.json');
-    if (enabled) {
-      const count = parseInt(countInput.value);
-      showToast('导出完成，最多 ' + count + ' 条', 'success');
-    } else {
-      showToast('导出全部账号完成', 'success');
+    showToast('正在加载账号列表...', 'info');
+    
+    // 构造查询 URL（获取账号列表）
+    var url = '/admin/accounts?used=false&page=1&size=' + count;
+    if (accountStatusFilter) url += '&status=' + accountStatusFilter;
+    if (accountSubscriptionFilter) url += '&subscription=' + encodeURIComponent(accountSubscriptionFilter);
+    if (accountKeyword) url += '&keyword=' + encodeURIComponent(accountKeyword);
+    
+    // 获取账号列表
+    const r = await api('GET', url);
+    
+    if (r.code !== 0 || !r.data || !r.data.list || !r.data.list.length) {
+      showToast('没有符合条件的账号', 'info');
+      return;
     }
+    
+    // 清空之前的选中状态
+    selectedAccountIds.clear();
+    
+    // 选中获取到的账号
+    const actualCount = Math.min(count, r.data.list.length);
+    r.data.list.forEach(acc => {
+      selectedAccountIds.add(acc.ID);
+    });
+    
+    // 刷新界面显示勾选状态
+    await loadAccounts(1);
+    
+    // 更新批量操作按钮状态
+    if (typeof updateAccountBatchBtn === 'function') {
+      updateAccountBatchBtn();
+    }
+    
+    showToast('已选中 ' + actualCount + ' 个账号，可以点击"导出"→"JSON (选中账号)"', 'success');
+    
   } catch (e) {
-    showToast(e.message || '导出失败', 'error');
+    showToast(e.message || '选中失败', 'error');
   }
 }
