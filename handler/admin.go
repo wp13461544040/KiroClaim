@@ -652,7 +652,7 @@ func PoolStats(c *gin.Context) {
 	var statusCounts []statusCount
 	database.DB.Model(&model.Account{}).Select("status, used, count(*) as count").Group("status, used").Find(&statusCounts)
 
-	var total, unused, used, available int64
+	var total, unused, used int64
 	var statusActive, statusSuspended, statusUsed int64
 	for _, sc := range statusCounts {
 		total += sc.Count
@@ -660,9 +660,6 @@ func PoolStats(c *gin.Context) {
 			used += sc.Count
 		} else {
 			unused += sc.Count
-			if sc.Status == string(model.AccountStatusActive) {
-				available += sc.Count
-			}
 		}
 		// 按状态分类统计
 		switch model.AccountStatus(sc.Status) {
@@ -674,6 +671,13 @@ func PoolStats(c *gin.Context) {
 			statusUsed += sc.Count
 		}
 	}
+
+	// 可用账号 = 未分配 且 状态正常 且 额度未消耗（与 OpenAPI 保持一致）
+	var available int64
+	database.DB.Model(&model.Account{}).
+		Where("used = ? AND status = ? AND credit_used = ?",
+			false, model.AccountStatusActive, 0).
+		Count(&available)
 
 	var accountSubscriptions []string
 	database.DB.Model(&model.Account{}).Pluck("subscription", &accountSubscriptions)
