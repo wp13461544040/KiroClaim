@@ -1909,16 +1909,15 @@ textarea.k-input::-webkit-scrollbar-corner {
 
 .settings-field {
     min-width: 0;
-    height: 82px;
+    min-height: 82px;
 }
 
 .settings-field .k-input {
     height: 36px;
 }
 
-.settings-field:has(textarea) {
+.settings-field textarea.k-input {
     height: auto;
-    min-height: 120px;
 }
 
 .settings-help {
