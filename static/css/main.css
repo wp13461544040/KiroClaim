@@ -1916,6 +1916,11 @@ textarea.k-input::-webkit-scrollbar-corner {
     height: 36px;
 }
 
+.settings-field:has(textarea) {
+    height: auto;
+    min-height: 120px;
+}
+
 .settings-help {
     height: 28px;
     margin-top: 5px;
