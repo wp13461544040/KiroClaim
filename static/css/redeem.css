@@ -1022,16 +1022,29 @@
 
       .account-info-grid {
         grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .account-info-item {
+        min-height: 56px;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
       }
 
       .account-info-label {
-        margin-bottom: 2px;
+        margin-bottom: 4px;
         font-size: 10px;
+        flex-shrink: 0;
       }
 
       .account-info-value {
         font-size: 12px;
-        line-height: 1.35;
+        line-height: 1.5;
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+        word-break: break-word;
       }
     }
 
@@ -1076,7 +1089,7 @@
       }
 
       .account-info-item {
-        min-height: 64px;
+        min-height: 56px;
         padding: 8px 10px;
         display: flex;
         flex-direction: column;
@@ -1089,6 +1102,8 @@
 
       .account-info-label {
         flex-shrink: 0;
+        margin-bottom: 4px;
+        font-size: 10px;
       }
 
       .account-info-value {
@@ -1097,6 +1112,7 @@
         text-overflow: clip;
         word-break: break-word;
         line-height: 1.5;
+        font-size: 12px;
       }
 
       .account-card-head .copy-btn {
@@ -1131,28 +1147,6 @@
       textarea {
         font-size: 16px !important;
       }
-      
-      /* 修复账号信息文本重叠问题 */
-      .account-info-item {
-        min-height: 60px;
-        padding: 8px 10px;
-        display: flex;
-        flex-direction: column;
-        justify-content: flex-start;
-      }
-      
-      .account-info-label {
-        flex-shrink: 0;
-        margin-bottom: 4px;
-      }
-      
-      .account-info-value {
-        white-space: normal;
-        overflow: visible;
-        text-overflow: clip;
-        word-break: break-word;
-        line-height: 1.5;
-      }
     }
 
     @media (max-width: 480px) {
@@ -1171,17 +1165,6 @@
       .btn { height: 46px; }
       .json { font-size: 11.5px; padding: 12px; max-height: 240px; }
       .result-title { margin: 14px 0 6px; }
-      
-      /* 修复账号信息文本重叠问题 */
-      .account-info-item {
-        min-height: 62px;
-        padding: 8px 10px;
-      }
-      
-      .account-info-value {
-        font-size: 12px;
-        line-height: 1.6;
-      }
     }
 
     @media (max-width: 360px) {
