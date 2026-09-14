@@ -18,16 +18,10 @@ import (
 //  1. used = false（未分配）
 //  2. status = active（状态正常）
 //  3. credit_used > 0（已消耗额度）
-//  4. credit_used > 0（只要额度使用过就清理）
-//  5. last_checked_at 在最近 24 小时内（确保是刷新后的最新数据）
 func CleanupUsedCreditAccountsManual() (int, error) {
-	// 计算 24 小时前的时间点
-	threshold := time.Now().Add(-24 * time.Hour)
-	
 	result := database.DB.Model(&model.Account{}).
 		Where("used = ? AND status = ?", false, model.AccountStatusActive).
 		Where("credit_used > ?", 0).
-		Where("last_checked_at > ?", threshold).
 		Updates(map[string]interface{}{
 			"status":  model.AccountStatusUsed,
 			"used":    true,
