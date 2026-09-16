@@ -127,6 +127,20 @@ async function triggerHealthScan() {
   }
 }
 
+async function resetHealthScanState() {
+  if (!confirm('确认重置巡检状态？\n\n这会强制清除"运行中"标记，中断可能存在的后台任务。\n通常在巡检状态卡住时使用。')) {
+    return;
+  }
+  
+  var r = await api('POST', '/admin/accounts/health-scan/reset');
+  if (r.code === 0) {
+    showToast(r.message || '状态已重置', 'success');
+    setTimeout(loadSettings, 500);
+  } else {
+    showToast(r.message || '重置失败', 'error');
+  }
+}
+
 async function saveSettings() {
   var body = {
     maxUpstreamCheckConcurrency: readIntSetting('settingMaxUpstreamCheckConcurrency', 6),

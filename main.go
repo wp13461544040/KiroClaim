@@ -139,6 +139,7 @@ func main() {
 		admin.GET("/pool/stats", handler.PoolStats)
 		admin.POST("/accounts/cleanup-used-credit", handler.CleanupUsedCreditAccountsAPI)
 		admin.POST("/accounts/health-scan", handler.TriggerHealthScan)
+		admin.POST("/accounts/health-scan/reset", handler.ResetHealthScanState)
 
 		admin.POST("/cards/generate", handler.GenerateCards)
 		admin.GET("/cards", handler.ListCards)

@@ -404,3 +404,25 @@ func TriggerHealthScan(c *gin.Context) {
 	AddOpLogWithCtx(c, "refresh", "手动触发账号健康巡检", "admin")
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "巡检已启动，可在设置页查看进度"})
 }
+
+// POST /admin/accounts/health-scan/reset
+// 强制重置巡检状态，用于状态卡住时恢复。
+// 会递增 epoch 中断任何正在运行的 worker goroutine。
+func ResetHealthScanState(c *gin.Context) {
+	healthScan.mu.Lock()
+	wasRunning := healthScan.running
+	healthScan.running = false
+	healthScan.lastErr = ""
+	healthScan.mu.Unlock()
+
+	// 递增 epoch 以中断任何可能还在跑的 worker goroutine
+	healthScanEpoch.Add(1)
+
+	msg := "巡检状态已重置"
+	if wasRunning {
+		msg += "（之前状态：运行中）"
+	}
+	AddOpLogWithCtx(c, "config", "重置健康巡检状态", "admin")
+	log.Printf("健康巡检状态已被手动重置，之前状态: running=%v", wasRunning)
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": msg})
+}
