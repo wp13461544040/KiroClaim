@@ -629,15 +629,15 @@ async function checkCardHealth(cardId, cardCode) {
         const updatedData = calculateHealthStats(initialData.card_id, initialData.card_code, accounts);
         updatedData.progress = `${data.index + 1}/${data.total}`;
         
-        // 更新显示
-        showCardHealthModal(updatedData, true);
+        // 增量更新显示（不重新创建弹框）
+        updateCardHealthModal(updatedData, true);
         
       } else if (data.type === 'complete') {
         // 全部完成
         eventSource.close();
         const accounts = Object.values(accountsMap);
         const finalData = calculateHealthStats(initialData.card_id, initialData.card_code, accounts);
-        showCardHealthModal(finalData, false); // 刷新完成
+        updateCardHealthModal(finalData, false); // 刷新完成
         showToast('健康检测完成', 'success');
       }
     } catch (err) {
@@ -726,7 +726,7 @@ function showCardHealthModal(data, isRefreshing = false) {
   let refreshHint = '';
   if (isRefreshing) {
     const progress = data.progress || '正在加载';
-    refreshHint = `<div style="background:#f59e0b20;color:#f59e0b;padding:8px 12px;border-radius:6px;margin-bottom:16px;text-align:center;font-size:13px">⏳ 正在实时刷新... ${progress}</div>`;
+    refreshHint = `<div id="refreshHint" style="background:#f59e0b20;color:#f59e0b;padding:8px 12px;border-radius:6px;margin-bottom:16px;text-align:center;font-size:13px">⏳ 正在实时刷新... ${progress}</div>`;
   }
 
   let content = `
@@ -737,30 +737,30 @@ function showCardHealthModal(data, isRefreshing = false) {
       </div>
       <div class="modal-body">
         ${refreshHint}
-        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px">
+        <div id="statsGrid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px">
           <div class="k-stat-card">
             <div class="k-stat-label">总绑定账号</div>
-            <div class="k-stat-value">${data.total_bound || 0}</div>
+            <div class="k-stat-value" data-stat="total">${data.total_bound || 0}</div>
           </div>
           <div class="k-stat-card">
             <div class="k-stat-label">健康账号</div>
-            <div class="k-stat-value" style="color:#22c55e">${data.healthy || 0}</div>
+            <div class="k-stat-value" style="color:#22c55e" data-stat="healthy">${data.healthy || 0}</div>
           </div>
           <div class="k-stat-card">
             <div class="k-stat-label">已使用</div>
-            <div class="k-stat-value" style="color:#f59e0b">${data.used || 0}</div>
+            <div class="k-stat-value" style="color:#f59e0b" data-stat="used">${data.used || 0}</div>
           </div>
           <div class="k-stat-card">
             <div class="k-stat-label">已封禁</div>
-            <div class="k-stat-value" style="color:#dc2626">${data.suspended || 0}</div>
+            <div class="k-stat-value" style="color:#dc2626" data-stat="suspended">${data.suspended || 0}</div>
           </div>
           <div class="k-stat-card">
             <div class="k-stat-label">已删除</div>
-            <div class="k-stat-value" style="color:#9ca3af">${data.deleted || 0}</div>
+            <div class="k-stat-value" style="color:#9ca3af" data-stat="deleted">${data.deleted || 0}</div>
           </div>
           <div class="k-stat-card">
             <div class="k-stat-label">平均额度使用</div>
-            <div class="k-stat-value">${creditPct}%</div>
+            <div class="k-stat-value" data-stat="credit">${creditPct}%</div>
           </div>
         </div>
   `;
@@ -779,28 +779,11 @@ function showCardHealthModal(data, isRefreshing = false) {
                 <th>额度使用</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody id="accountsTableBody">
     `;
 
-    accounts.forEach(acc => {
-      const statusBadge = acc.used ? 
-        '<span class="k-badge" style="background:#f59e0b;color:#fff">已使用</span>' :
-        (acc.status === 'suspended' ? 
-          '<span class="k-badge" style="background:#dc2626;color:#fff">已封禁</span>' :
-          '<span class="k-badge k-badge-success">健康</span>');
-      
-      const creditUsed = Number(acc.credit_used || 0).toFixed(2);
-      const creditLimit = Number(acc.credit_limit || 0).toFixed(2);
-      const creditPct = creditLimit > 0 ? ((acc.credit_used / acc.credit_limit) * 100).toFixed(1) : '0.0';
-
-      content += `
-        <tr>
-          <td data-label="邮箱" style="font-size:12px;font-family:monospace">${escapeHtml(acc.email || 'ID:' + acc.id)}</td>
-          <td data-label="状态">${statusBadge}</td>
-          <td data-label="区域" style="font-size:12px">${escapeHtml(acc.region || '-')}</td>
-          <td data-label="额度使用" style="font-size:12px">${creditUsed}/${creditLimit} (${creditPct}%)</td>
-        </tr>
-      `;
+    accounts.forEach((acc, idx) => {
+      content += generateAccountRow(acc, idx);
     });
 
     content += `
@@ -821,6 +804,82 @@ function showCardHealthModal(data, isRefreshing = false) {
 
   modal.innerHTML = content;
   document.body.appendChild(modal);
+}
+
+// 增量更新健康检测弹框（不重新创建，只更新内容）
+function updateCardHealthModal(data, isRefreshing = false) {
+  const modal = document.getElementById('cardHealthModal');
+  if (!modal) return; // 弹框已关闭
+
+  const accounts = Array.isArray(data.accounts) ? data.accounts : [];
+  const creditPct = Number(data.avg_credit_pct || 0).toFixed(1);
+
+  // 更新刷新提示
+  const refreshHint = modal.querySelector('#refreshHint');
+  if (refreshHint) {
+    if (isRefreshing) {
+      const progress = data.progress || '正在加载';
+      refreshHint.textContent = `⏳ 正在实时刷新... ${progress}`;
+    } else {
+      refreshHint.remove(); // 完成后移除提示
+    }
+  }
+
+  // 更新统计数据
+  const totalEl = modal.querySelector('[data-stat="total"]');
+  const healthyEl = modal.querySelector('[data-stat="healthy"]');
+  const usedEl = modal.querySelector('[data-stat="used"]');
+  const suspendedEl = modal.querySelector('[data-stat="suspended"]');
+  const deletedEl = modal.querySelector('[data-stat="deleted"]');
+  const creditEl = modal.querySelector('[data-stat="credit"]');
+
+  if (totalEl) totalEl.textContent = data.total_bound || 0;
+  if (healthyEl) healthyEl.textContent = data.healthy || 0;
+  if (usedEl) usedEl.textContent = data.used || 0;
+  if (suspendedEl) suspendedEl.textContent = data.suspended || 0;
+  if (deletedEl) deletedEl.textContent = data.deleted || 0;
+  if (creditEl) creditEl.textContent = creditPct + '%';
+
+  // 更新账号表格（只更新变化的行）
+  const tbody = modal.querySelector('#accountsTableBody');
+  if (tbody && accounts.length > 0) {
+    accounts.forEach((acc, idx) => {
+      let row = tbody.querySelector(`tr[data-account-idx="${idx}"]`);
+      if (!row) {
+        // 新行，直接添加
+        row = document.createElement('tr');
+        row.setAttribute('data-account-idx', idx);
+        tbody.appendChild(row);
+      }
+      // 更新行内容
+      row.innerHTML = generateAccountRowContent(acc, idx);
+    });
+  }
+}
+
+// 生成账号表格行（完整）
+function generateAccountRow(acc, idx) {
+  return `<tr data-account-idx="${idx}">${generateAccountRowContent(acc, idx)}</tr>`;
+}
+
+// 生成账号表格行内容（仅内容，不含 tr 标签）
+function generateAccountRowContent(acc, idx) {
+  const statusBadge = acc.used ? 
+    '<span class="k-badge" style="background:#f59e0b;color:#fff">已使用</span>' :
+    (acc.status === 'suspended' ? 
+      '<span class="k-badge" style="background:#dc2626;color:#fff">已封禁</span>' :
+      '<span class="k-badge k-badge-success">健康</span>');
+  
+  const creditUsed = Number(acc.credit_used || 0).toFixed(2);
+  const creditLimit = Number(acc.credit_limit || 0).toFixed(2);
+  const creditPct = creditLimit > 0 ? ((acc.credit_used / acc.credit_limit) * 100).toFixed(1) : '0.0';
+
+  return `
+    <td data-label="邮箱" style="font-size:12px;font-family:monospace">${escapeHtml(acc.email || 'ID:' + acc.id)}</td>
+    <td data-label="状态">${statusBadge}</td>
+    <td data-label="区域" style="font-size:12px">${escapeHtml(acc.region || '-')}</td>
+    <td data-label="额度使用" style="font-size:12px">${creditUsed}/${creditLimit} (${creditPct}%)</td>
+  `;
 }
 
 // 显示批量检测结果
