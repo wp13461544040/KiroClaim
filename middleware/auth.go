@@ -100,23 +100,31 @@ func AdminAuth() gin.HandlerFunc {
 			return
 		}
 
+		var tokenString string
+
+		// 优先从 Header 读取 Token
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
+		if authHeader != "" {
+			parts := strings.SplitN(authHeader, " ", 2)
+			if len(parts) == 2 && parts[0] == "Bearer" {
+				tokenString = parts[1]
+			}
+		}
+
+		// 如果 Header 没有，尝试从 URL 参数读取（用于 EventSource 等不支持自定义 Header 的场景）
+		if tokenString == "" {
+			tokenString = c.Query("token")
+		}
+
+		// 如果两者都没有，返回错误
+		if tokenString == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"code": 1, "message": "缺少认证 Token",
 			})
 			return
 		}
 
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"code": 1, "message": "Token 格式错误",
-			})
-			return
-		}
-
-		claims, err := ValidateToken(parts[1])
+		claims, err := ValidateToken(tokenString)
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"code": 1, "message": "Token 无效或已过期",

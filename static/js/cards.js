@@ -603,10 +603,9 @@ async function checkCardHealth(cardId, cardCode) {
   const initialData = quickResult.data;
   showCardHealthModal(initialData, true); // 传入 true 表示正在刷新
 
-  // 第二步：建立SSE连接实时更新
-  const eventSource = new EventSource(`/admin/cards/${cardId}/health`, {
-    withCredentials: true
-  });
+  // 第二步：建立SSE连接实时更新（通过URL参数传递Token）
+  const token = localStorage.getItem('token');
+  const eventSource = new EventSource(`/admin/cards/${cardId}/health?token=${encodeURIComponent(token)}`);
 
   let accountsMap = {}; // 用于存储账号更新
   initialData.accounts.forEach((acc, idx) => {
