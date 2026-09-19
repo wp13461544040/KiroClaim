@@ -496,7 +496,7 @@ func ListCardLogs(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"code": 0, "data": logs})
 }
 
-// CheckCardHealth 检测卡密绑定账号的健康状态
+// CheckCardHealth 检测卡密绑定账号的健康状态（主动查询上游最新状态）
 func CheckCardHealth(c *gin.Context) {
 	idStr := c.Param("id")
 	cardID, err := strconv.ParseUint(idStr, 10, 64)
@@ -545,11 +545,20 @@ func CheckCardHealth(c *gin.Context) {
 	// 计算已删除账号数
 	healthStats["deleted"] = len(accountIDs) - len(accounts)
 
-	// 统计各状态账号
+	// 主动查询上游最新状态并更新数据库
 	accountDetails := make([]gin.H, 0, len(accounts))
 	var totalCredit, usedCredit float64
 
 	for _, acc := range accounts {
+		// 调用健康检测获取最新上游状态
+		result := checkAccountHealth(acc)
+		
+		// 应用健康检测结果到数据库
+		if err := applyHealthResult(acc.ID, result); err == nil {
+			// 重新读取更新后的账号数据
+			database.DB.First(&acc, acc.ID)
+		}
+
 		detail := gin.H{
 			"id":           acc.ID,
 			"email":        acc.Email,
@@ -649,6 +658,15 @@ func BatchCheckCardsHealth(c *gin.Context) {
 
 			var totalCredit, usedCredit float64
 			for _, acc := range accounts {
+				// 主动查询上游最新状态
+				result := checkAccountHealth(acc)
+				
+				// 应用健康检测结果到数据库
+				if err := applyHealthResult(acc.ID, result); err == nil {
+					// 重新读取更新后的账号数据
+					database.DB.First(&acc, acc.ID)
+				}
+
 				totalCredit += acc.CreditLimit
 				usedCredit += acc.CreditUsed
 
