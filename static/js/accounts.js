@@ -978,7 +978,7 @@ async function loadAssignedAccounts(page = 1) {
       <td data-label="选择"><input type="checkbox" class="k-checkbox" ${checked} onchange="toggleAssignedSelect(${a.ID}, this.checked)"></td>
       <td data-label="ID" style="color:#999">${a.ID}</td>
       <td data-label="邮箱" class="account-email-cell">${a.Email || '-'}</td>
-      <td data-label="健康状态">${healthBadge(a.Status)}</td>
+      <td data-label="健康状态">${healthBadge(a.Used ? 'used' : a.Status)}</td>
       <td data-label="订阅" class="account-subscription-cell">${subscriptionBadge(a.Subscription)}</td>
       <td data-label="额度用量" class="account-usage-cell">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--text-muted);max-width:160px">
