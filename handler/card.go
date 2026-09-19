@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/wp13461544040/KiroClaim/database"
@@ -496,7 +497,101 @@ func ListCardLogs(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"code": 0, "data": logs})
 }
 
-// CheckCardHealth 检测卡密绑定账号的健康状态（主动查询上游最新状态）
+// CheckCardHealthQuick 快速返回卡密账号健康状态（使用数据库缓存）
+func CheckCardHealthQuick(c *gin.Context) {
+	idStr := c.Param("id")
+	cardID, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "卡密ID无效"})
+		return
+	}
+
+	// 查询卡密是否存在
+	var card model.Card
+	if err := database.DB.First(&card, cardID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 1, "message": "卡密不存在"})
+		return
+	}
+
+	// 查询该卡密关联的所有账号ID
+	var accountIDs []uint
+	database.DB.Model(&model.CardAccount{}).
+		Where("card_id = ?", cardID).
+		Pluck("account_id", &accountIDs)
+
+	// 统计信息
+	healthStats := gin.H{
+		"card_id":        cardID,
+		"card_code":      card.Code,
+		"total_bound":    len(accountIDs),
+		"deleted":        0,
+		"healthy":        0,
+		"used":           0,
+		"suspended":      0,
+		"total_credit":   0.0,
+		"used_credit":    0.0,
+		"avg_credit_pct": 0.0,
+		"accounts":       []gin.H{},
+	}
+
+	if len(accountIDs) == 0 {
+		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "该卡密暂无绑定账号", "data": healthStats})
+		return
+	}
+
+	// 查询实际存在的账号（使用数据库缓存）
+	var accounts []model.Account
+	database.DB.Where("id IN (?)", accountIDs).Find(&accounts)
+
+	// 计算已删除账号数
+	healthStats["deleted"] = len(accountIDs) - len(accounts)
+
+	// 统计各状态账号
+	accountDetails := make([]gin.H, 0, len(accounts))
+	var totalCredit, usedCredit float64
+
+	for _, acc := range accounts {
+		detail := gin.H{
+			"id":           acc.ID,
+			"email":        acc.Email,
+			"status":       acc.Status,
+			"used":         acc.Used,
+			"credit_used":  acc.CreditUsed,
+			"credit_limit": acc.CreditLimit,
+			"region":       acc.Region,
+			"provider":     acc.Provider,
+			"refreshing":   false, // 初始未刷新
+		}
+		accountDetails = append(accountDetails, detail)
+
+		totalCredit += acc.CreditLimit
+		usedCredit += acc.CreditUsed
+
+		// 统计各类型
+		if acc.Used {
+			healthStats["used"] = healthStats["used"].(int) + 1
+		} else if acc.Status == model.AccountStatusSuspended {
+			healthStats["suspended"] = healthStats["suspended"].(int) + 1
+		} else if acc.Status == model.AccountStatusActive {
+			healthStats["healthy"] = healthStats["healthy"].(int) + 1
+		}
+	}
+
+	healthStats["accounts"] = accountDetails
+	healthStats["total_credit"] = totalCredit
+	healthStats["used_credit"] = usedCredit
+	if totalCredit > 0 {
+		healthStats["avg_credit_pct"] = (usedCredit / totalCredit) * 100
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "已返回缓存数据，正在后台刷新",
+		"data":    healthStats,
+	})
+}
+
+// CheckCardHealth 检测卡密绑定账号的健康状态（主动并发查询上游最新状态）
 func CheckCardHealth(c *gin.Context) {
 	idStr := c.Param("id")
 	cardID, err := strconv.ParseUint(idStr, 10, 64)
@@ -545,41 +640,68 @@ func CheckCardHealth(c *gin.Context) {
 	// 计算已删除账号数
 	healthStats["deleted"] = len(accountIDs) - len(accounts)
 
-	// 主动查询上游最新状态并更新数据库
-	accountDetails := make([]gin.H, 0, len(accounts))
+	// 并发查询上游状态
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	accountDetails := make([]gin.H, len(accounts))
+
+	// 限制并发数为10
+	concurrency := 10
+	if len(accounts) < concurrency {
+		concurrency = len(accounts)
+	}
+	sem := make(chan struct{}, concurrency)
+
+	for i, acc := range accounts {
+		wg.Add(1)
+		go func(idx int, account model.Account) {
+			defer wg.Done()
+			sem <- struct{}{}        // 获取信号量
+			defer func() { <-sem }() // 释放信号量
+
+			// 调用健康检测获取最新上游状态
+			result := checkAccountHealth(account)
+
+			// 应用健康检测结果到数据库
+			if err := applyHealthResult(account.ID, result); err == nil {
+				// 重新读取更新后的账号数据
+				database.DB.First(&account, account.ID)
+			}
+
+			mu.Lock()
+			accountDetails[idx] = gin.H{
+				"id":           account.ID,
+				"email":        account.Email,
+				"status":       account.Status,
+				"used":         account.Used,
+				"credit_used":  account.CreditUsed,
+				"credit_limit": account.CreditLimit,
+				"region":       account.Region,
+				"provider":     account.Provider,
+			}
+			mu.Unlock()
+		}(i, acc)
+	}
+
+	// 等待所有查询完成
+	wg.Wait()
+
+	// 统计各类型
 	var totalCredit, usedCredit float64
+	for _, detail := range accountDetails {
+		creditLimit, _ := detail["credit_limit"].(float64)
+		creditUsed, _ := detail["credit_used"].(float64)
+		totalCredit += creditLimit
+		usedCredit += creditUsed
 
-	for _, acc := range accounts {
-		// 调用健康检测获取最新上游状态
-		result := checkAccountHealth(acc)
-		
-		// 应用健康检测结果到数据库
-		if err := applyHealthResult(acc.ID, result); err == nil {
-			// 重新读取更新后的账号数据
-			database.DB.First(&acc, acc.ID)
-		}
+		used, _ := detail["used"].(bool)
+		status, _ := detail["status"].(string)
 
-		detail := gin.H{
-			"id":           acc.ID,
-			"email":        acc.Email,
-			"status":       acc.Status,
-			"used":         acc.Used,
-			"credit_used":  acc.CreditUsed,
-			"credit_limit": acc.CreditLimit,
-			"region":       acc.Region,
-			"provider":     acc.Provider,
-		}
-		accountDetails = append(accountDetails, detail)
-
-		totalCredit += acc.CreditLimit
-		usedCredit += acc.CreditUsed
-
-		// 统计各类型
-		if acc.Used {
+		if used {
 			healthStats["used"] = healthStats["used"].(int) + 1
-		} else if acc.Status == model.AccountStatusSuspended {
+		} else if status == string(model.AccountStatusSuspended) {
 			healthStats["suspended"] = healthStats["suspended"].(int) + 1
-		} else if acc.Status == model.AccountStatusActive {
+		} else if status == string(model.AccountStatusActive) {
 			healthStats["healthy"] = healthStats["healthy"].(int) + 1
 		}
 	}
@@ -656,28 +778,57 @@ func BatchCheckCardsHealth(c *gin.Context) {
 
 			stats["deleted"] = len(accountIDs) - len(accounts)
 
-			var totalCredit, usedCredit float64
-			for _, acc := range accounts {
-				// 主动查询上游最新状态
-				result := checkAccountHealth(acc)
-				
-				// 应用健康检测结果到数据库
-				if err := applyHealthResult(acc.ID, result); err == nil {
-					// 重新读取更新后的账号数据
-					database.DB.First(&acc, acc.ID)
-				}
-
-				totalCredit += acc.CreditLimit
-				usedCredit += acc.CreditUsed
-
-				if acc.Used {
-					stats["used"] = stats["used"].(int) + 1
-				} else if acc.Status == model.AccountStatusSuspended {
-					stats["suspended"] = stats["suspended"].(int) + 1
-				} else if acc.Status == model.AccountStatusActive {
-					stats["healthy"] = stats["healthy"].(int) + 1
-				}
+			// 并发查询上游状态
+			var wg sync.WaitGroup
+			var mu sync.Mutex
+			
+			// 限制并发数为10
+			concurrency := 10
+			if len(accounts) < concurrency {
+				concurrency = len(accounts)
 			}
+			sem := make(chan struct{}, concurrency)
+
+			var totalCredit, usedCredit float64
+			var healthy, used, suspended int
+
+			for _, acc := range accounts {
+				wg.Add(1)
+				go func(account model.Account) {
+					defer wg.Done()
+					sem <- struct{}{}        // 获取信号量
+					defer func() { <-sem }() // 释放信号量
+
+					// 主动查询上游最新状态
+					result := checkAccountHealth(account)
+					
+					// 应用健康检测结果到数据库
+					if err := applyHealthResult(account.ID, result); err == nil {
+						// 重新读取更新后的账号数据
+						database.DB.First(&account, account.ID)
+					}
+
+					mu.Lock()
+					totalCredit += account.CreditLimit
+					usedCredit += account.CreditUsed
+
+					if account.Used {
+						used++
+					} else if account.Status == model.AccountStatusSuspended {
+						suspended++
+					} else if account.Status == model.AccountStatusActive {
+						healthy++
+					}
+					mu.Unlock()
+				}(acc)
+			}
+
+			// 等待所有查询完成
+			wg.Wait()
+
+			stats["healthy"] = healthy
+			stats["used"] = used
+			stats["suspended"] = suspended
 
 			if totalCredit > 0 {
 				stats["avg_credit_pct"] = (usedCredit / totalCredit) * 100

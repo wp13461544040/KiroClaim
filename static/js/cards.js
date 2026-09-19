@@ -591,15 +591,31 @@ async function showCardLogs(cardId, code) {
 
 // 检测单个卡密健康状态
 async function checkCardHealth(cardId, cardCode) {
-  const r = await api('GET', `/admin/cards/${cardId}/health`);
+  // 第一步：立即显示缓存数据
+  const quickResult = await api('GET', `/admin/cards/${cardId}/health/quick`);
   
-  if (r.code !== 0) {
-    showToast('检测失败：' + (r.message || r.msg || '未知错误'), 'error');
+  if (quickResult.code !== 0) {
+    showToast('获取数据失败：' + (quickResult.message || quickResult.msg || '未知错误'), 'error');
     return;
   }
 
-  const data = r.data;
-  showCardHealthModal(data);
+  // 立即显示缓存数据
+  showCardHealthModal(quickResult.data, true); // 传入 true 表示正在刷新
+
+  // 第二步：触发并发刷新
+  try {
+    const refreshResult = await api('GET', `/admin/cards/${cardId}/health`);
+    
+    if (refreshResult.code === 0) {
+      // 更新模态框数据
+      showCardHealthModal(refreshResult.data, false); // 传入 false 表示刷新完成
+    } else {
+      showToast('刷新失败：' + (refreshResult.message || refreshResult.msg || '未知错误'), 'error');
+    }
+  } catch (err) {
+    console.error('Health check refresh error:', err);
+    showToast('刷新时出错', 'error');
+  }
 }
 
 // 批量检测卡密健康状态
@@ -626,13 +642,24 @@ async function batchCheckCardsHealth() {
 }
 
 // 显示单个卡密健康检测结果
-function showCardHealthModal(data) {
+function showCardHealthModal(data, isRefreshing = false) {
+  // 如果模态框已存在，先移除
+  const existingModal = document.getElementById('cardHealthModal');
+  if (existingModal) {
+    existingModal.remove();
+  }
+
   const modal = document.createElement('div');
   modal.id = 'cardHealthModal';
   modal.className = 'modal-overlay active';
 
   const accounts = Array.isArray(data.accounts) ? data.accounts : [];
   const creditPct = Number(data.avg_credit_pct || 0).toFixed(1);
+
+  // 刷新状态提示
+  const refreshHint = isRefreshing 
+    ? '<div style="background:#f59e0b20;color:#f59e0b;padding:8px 12px;border-radius:6px;margin-bottom:16px;text-align:center;font-size:13px">⏳ 正在后台刷新最新状态...</div>'
+    : '';
 
   let content = `
     <div class="modal-content" style="max-width: 900px">
@@ -641,6 +668,7 @@ function showCardHealthModal(data) {
         <button type="button" class="modal-close" onclick="document.getElementById('cardHealthModal').remove()">&times;</button>
       </div>
       <div class="modal-body">
+        ${refreshHint}
         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px">
           <div class="k-stat-card">
             <div class="k-stat-label">总绑定账号</div>
