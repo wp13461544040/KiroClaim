@@ -4,8 +4,10 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -591,8 +593,109 @@ func CheckCardHealthQuick(c *gin.Context) {
 	})
 }
 
-// CheckCardHealth 检测卡密绑定账号的健康状态（主动并发查询上游最新状态）
+// CheckCardHealth 实时流式检测卡密账号健康状态（SSE）
 func CheckCardHealth(c *gin.Context) {
+	idStr := c.Param("id")
+	cardID, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "卡密ID无效"})
+		return
+	}
+
+	// 查询卡密是否存在
+	var card model.Card
+	if err := database.DB.First(&card, cardID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 1, "message": "卡密不存在"})
+		return
+	}
+
+	// 查询该卡密关联的所有账号ID
+	var accountIDs []uint
+	database.DB.Model(&model.CardAccount{}).
+		Where("card_id = ?", cardID).
+		Pluck("account_id", &accountIDs)
+
+	if len(accountIDs) == 0 {
+		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "该卡密暂无绑定账号", "data": gin.H{
+			"card_id":     cardID,
+			"card_code":   card.Code,
+			"total_bound": 0,
+			"accounts":    []gin.H{},
+		}})
+		return
+	}
+
+	// 查询实际存在的账号
+	var accounts []model.Account
+	database.DB.Where("id IN (?)", accountIDs).Find(&accounts)
+
+	// 设置SSE响应头
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "不支持流式响应"})
+		return
+	}
+
+	// 并发查询上游状态，每完成一个立即推送
+	var wg sync.WaitGroup
+	concurrency := 10
+	sem := make(chan struct{}, concurrency)
+
+	for i, acc := range accounts {
+		wg.Add(1)
+		sem <- struct{}{} // 获取信号量
+
+		go func(index int, account model.Account) {
+			defer wg.Done()
+			defer func() { <-sem }() // 释放信号量
+
+			// 查询上游最新状态
+			detail, err := queryAccountHealthFromUpstream(account)
+			if err != nil {
+				log.Printf("查询账号 %d 健康状态失败: %v", account.ID, err)
+				// 使用缓存数据
+				detail = gin.H{
+					"id":           account.ID,
+					"email":        account.Email,
+					"status":       account.Status,
+					"used":         account.Used,
+					"credit_used":  account.CreditUsed,
+					"credit_limit": account.CreditLimit,
+					"region":       account.Region,
+					"provider":     account.Provider,
+					"error":        err.Error(),
+				}
+			}
+
+			// 立即推送结果
+			eventData, _ := json.Marshal(gin.H{
+				"type":    "account",
+				"index":   index,
+				"total":   len(accounts),
+				"account": detail,
+			})
+
+			fmt.Fprintf(c.Writer, "data: %s\n\n", eventData)
+			flusher.Flush()
+
+		}(i, acc)
+	}
+
+	// 等待所有并发完成
+	wg.Wait()
+
+	// 发送完成信号
+	fmt.Fprintf(c.Writer, "data: %s\n\n", `{"type":"complete"}`)
+	flusher.Flush()
+}
+
+// CheckCardHealthLegacy 传统方式检测（等待全部完成）- 保留用于批量检测
+func CheckCardHealthLegacy(c *gin.Context) {
 	idStr := c.Param("id")
 	cardID, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
@@ -718,6 +821,29 @@ func CheckCardHealth(c *gin.Context) {
 		"message": "检测完成",
 		"data":    healthStats,
 	})
+}
+
+// queryAccountHealthFromUpstream 查询账号在上游的健康状态
+func queryAccountHealthFromUpstream(account model.Account) (gin.H, error) {
+	// 调用健康检测获取最新上游状态
+	result := checkAccountHealth(account)
+
+	// 应用健康检测结果到数据库
+	if err := applyHealthResult(account.ID, result); err == nil {
+		// 重新读取更新后的账号数据
+		database.DB.First(&account, account.ID)
+	}
+
+	return gin.H{
+		"id":           account.ID,
+		"email":        account.Email,
+		"status":       account.Status,
+		"used":         account.Used,
+		"credit_used":  account.CreditUsed,
+		"credit_limit": account.CreditLimit,
+		"region":       account.Region,
+		"provider":     account.Provider,
+	}, nil
 }
 
 // BatchCheckCardsHealth 批量检测多个卡密的健康状态

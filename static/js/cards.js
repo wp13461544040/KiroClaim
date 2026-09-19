@@ -589,7 +589,7 @@ async function showCardLogs(cardId, code) {
   document.body.appendChild(overlay);
 }
 
-// 检测单个卡密健康状态
+// 检测单个卡密健康状态（使用SSE流式更新）
 async function checkCardHealth(cardId, cardCode) {
   // 第一步：立即显示缓存数据
   const quickResult = await api('GET', `/admin/cards/${cardId}/health/quick`);
@@ -600,22 +600,85 @@ async function checkCardHealth(cardId, cardCode) {
   }
 
   // 立即显示缓存数据
-  showCardHealthModal(quickResult.data, true); // 传入 true 表示正在刷新
+  const initialData = quickResult.data;
+  showCardHealthModal(initialData, true); // 传入 true 表示正在刷新
 
-  // 第二步：触发并发刷新
-  try {
-    const refreshResult = await api('GET', `/admin/cards/${cardId}/health`);
-    
-    if (refreshResult.code === 0) {
-      // 更新模态框数据
-      showCardHealthModal(refreshResult.data, false); // 传入 false 表示刷新完成
-    } else {
-      showToast('刷新失败：' + (refreshResult.message || refreshResult.msg || '未知错误'), 'error');
+  // 第二步：建立SSE连接实时更新
+  const eventSource = new EventSource(`/admin/cards/${cardId}/health`, {
+    withCredentials: true
+  });
+
+  let accountsMap = {}; // 用于存储账号更新
+  initialData.accounts.forEach((acc, idx) => {
+    accountsMap[idx] = acc;
+  });
+
+  eventSource.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      
+      if (data.type === 'account') {
+        // 更新单个账号数据
+        accountsMap[data.index] = data.account;
+        
+        // 重新计算统计信息
+        const accounts = Object.values(accountsMap);
+        const updatedData = calculateHealthStats(initialData.card_id, initialData.card_code, accounts);
+        updatedData.progress = `${data.index + 1}/${data.total}`;
+        
+        // 更新显示
+        showCardHealthModal(updatedData, true);
+        
+      } else if (data.type === 'complete') {
+        // 全部完成
+        eventSource.close();
+        const accounts = Object.values(accountsMap);
+        const finalData = calculateHealthStats(initialData.card_id, initialData.card_code, accounts);
+        showCardHealthModal(finalData, false); // 刷新完成
+        showToast('健康检测完成', 'success');
+      }
+    } catch (err) {
+      console.error('SSE parse error:', err);
     }
-  } catch (err) {
-    console.error('Health check refresh error:', err);
-    showToast('刷新时出错', 'error');
-  }
+  };
+
+  eventSource.onerror = (err) => {
+    console.error('SSE error:', err);
+    eventSource.close();
+    showToast('实时更新连接断开', 'warning');
+  };
+}
+
+// 计算健康统计信息
+function calculateHealthStats(cardId, cardCode, accounts) {
+  let healthy = 0, used = 0, suspended = 0;
+  let totalCredit = 0, usedCredit = 0;
+
+  accounts.forEach(acc => {
+    totalCredit += acc.credit_limit || 0;
+    usedCredit += acc.credit_used || 0;
+
+    if (acc.used) {
+      used++;
+    } else if (acc.status === 'suspended') {
+      suspended++;
+    } else if (acc.status === 'active') {
+      healthy++;
+    }
+  });
+
+  return {
+    card_id: cardId,
+    card_code: cardCode,
+    total_bound: accounts.length,
+    healthy: healthy,
+    used: used,
+    suspended: suspended,
+    total_credit: totalCredit,
+    used_credit: usedCredit,
+    avg_credit_pct: totalCredit > 0 ? (usedCredit / totalCredit * 100) : 0,
+    accounts: accounts
+  };
 }
 
 // 批量检测卡密健康状态
@@ -657,9 +720,11 @@ function showCardHealthModal(data, isRefreshing = false) {
   const creditPct = Number(data.avg_credit_pct || 0).toFixed(1);
 
   // 刷新状态提示
-  const refreshHint = isRefreshing 
-    ? '<div style="background:#f59e0b20;color:#f59e0b;padding:8px 12px;border-radius:6px;margin-bottom:16px;text-align:center;font-size:13px">⏳ 正在后台刷新最新状态...</div>'
-    : '';
+  let refreshHint = '';
+  if (isRefreshing) {
+    const progress = data.progress || '正在加载';
+    refreshHint = `<div style="background:#f59e0b20;color:#f59e0b;padding:8px 12px;border-radius:6px;margin-bottom:16px;text-align:center;font-size:13px">⏳ 正在实时刷新... ${progress}</div>`;
+  }
 
   let content = `
     <div class="modal-content" style="max-width: 900px">
