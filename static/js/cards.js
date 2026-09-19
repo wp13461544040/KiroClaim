@@ -122,6 +122,7 @@ async function loadCards(page = 1) {
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="ui-btn ui-btn-secondary ui-btn-sm" onclick="showCardLogs(${c.ID}, '${escapeAttr(c.Code)}')">详情</button>
           <button class="ui-btn ui-btn-primary ui-btn-sm" onclick="copyCardFormatted('${escapeAttr(c.Code)}')">复制</button>
+          ${status === 'active' ? `<button class="ui-btn ui-btn-sm" style="background:#10b981;color:#fff" onclick="checkCardHealth(${c.ID}, '${escapeAttr(c.Code)}')">检测</button>` : ''}
           <button class="ui-btn ui-btn-danger ui-btn-sm" onclick="deleteCard(${c.ID})">删除</button>
         </div>
       </td>
@@ -516,11 +517,20 @@ function toggleSelectAllCards(checked) {
 }
 
 function updateCardBatchBtn() {
-  const btn = document.getElementById('batchDeleteCardsBtn');
-  const count = document.getElementById('selectedCardCount');
-  if (btn && count) {
-    count.textContent = selectedCardIds.size;
-    btn.style.display = selectedCardIds.size > 0 ? '' : 'none';
+  const deleteBtn = document.getElementById('batchDeleteCardsBtn');
+  const healthBtn = document.getElementById('batchCheckHealthBtn');
+  const deleteCount = document.getElementById('selectedCardCount');
+  const healthCount = document.getElementById('selectedCardCountHealth');
+  
+  if (deleteBtn && deleteCount) {
+    deleteCount.textContent = selectedCardIds.size;
+    deleteBtn.style.display = selectedCardIds.size > 0 ? '' : 'none';
+  }
+  
+  if (healthBtn && healthCount) {
+    healthCount.textContent = selectedCardIds.size;
+    // 只在"使用中"状态时显示批量检测按钮
+    healthBtn.style.display = (selectedCardIds.size > 0 && cardStatusFilter === 'active') ? '' : 'none';
   }
 }
 
@@ -577,4 +587,242 @@ async function showCardLogs(cardId, code) {
   content += '</div></div>';
   overlay.innerHTML = content;
   document.body.appendChild(overlay);
+}
+
+// 检测单个卡密健康状态
+async function checkCardHealth(cardId, cardCode) {
+  const r = await api('GET', `/admin/cards/${cardId}/health`);
+  
+  if (r.code !== 0) {
+    showToast('检测失败：' + (r.message || r.msg || '未知错误'), 'error');
+    return;
+  }
+
+  const data = r.data;
+  showCardHealthModal(data);
+}
+
+// 批量检测卡密健康状态
+async function batchCheckCardsHealth() {
+  if (selectedCardIds.size === 0) {
+    showToast('请先选择要检测的卡密', 'warning');
+    return;
+  }
+
+  if (selectedCardIds.size > 100) {
+    showToast('单次最多检测100张卡密', 'error');
+    return;
+  }
+
+  showToast('正在检测中...', 'info');
+  const r = await api('POST', '/admin/cards/batch-health', { card_ids: [...selectedCardIds] });
+  
+  if (r.code !== 0) {
+    showToast('批量检测失败：' + (r.message || r.msg || '未知错误'), 'error');
+    return;
+  }
+
+  showBatchHealthModal(r.data);
+}
+
+// 显示单个卡密健康检测结果
+function showCardHealthModal(data) {
+  const modal = document.createElement('div');
+  modal.id = 'cardHealthModal';
+  modal.className = 'modal-overlay active';
+
+  const accounts = Array.isArray(data.accounts) ? data.accounts : [];
+  const creditPct = Number(data.avg_credit_pct || 0).toFixed(1);
+
+  let content = `
+    <div class="modal-content" style="max-width: 900px">
+      <div class="modal-header">
+        <span class="modal-title">账号健康检测 - ${escapeHtml(data.card_code)}</span>
+        <button type="button" class="modal-close" onclick="document.getElementById('cardHealthModal').remove()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px">
+          <div class="k-stat-card">
+            <div class="k-stat-label">总绑定账号</div>
+            <div class="k-stat-value">${data.total_bound || 0}</div>
+          </div>
+          <div class="k-stat-card">
+            <div class="k-stat-label">健康账号</div>
+            <div class="k-stat-value" style="color:#22c55e">${data.healthy || 0}</div>
+          </div>
+          <div class="k-stat-card">
+            <div class="k-stat-label">已使用</div>
+            <div class="k-stat-value" style="color:#f59e0b">${data.used || 0}</div>
+          </div>
+          <div class="k-stat-card">
+            <div class="k-stat-label">已封禁</div>
+            <div class="k-stat-value" style="color:#dc2626">${data.suspended || 0}</div>
+          </div>
+          <div class="k-stat-card">
+            <div class="k-stat-label">已删除</div>
+            <div class="k-stat-value" style="color:#9ca3af">${data.deleted || 0}</div>
+          </div>
+          <div class="k-stat-card">
+            <div class="k-stat-label">平均额度使用</div>
+            <div class="k-stat-value">${creditPct}%</div>
+          </div>
+        </div>
+  `;
+
+  if (accounts.length > 0) {
+    content += `
+      <div style="margin-top: 20px">
+        <h4 style="margin-bottom: 12px; font-size: 14px; font-weight: 600">账号详情</h4>
+        <div style="max-height: 400px; overflow-y: auto">
+          <table class="k-table">
+            <thead>
+              <tr>
+                <th>邮箱</th>
+                <th>状态</th>
+                <th>区域</th>
+                <th>额度使用</th>
+              </tr>
+            </thead>
+            <tbody>
+    `;
+
+    accounts.forEach(acc => {
+      const statusBadge = acc.used ? 
+        '<span class="k-badge" style="background:#f59e0b;color:#fff">已使用</span>' :
+        (acc.status === 'suspended' ? 
+          '<span class="k-badge" style="background:#dc2626;color:#fff">已封禁</span>' :
+          '<span class="k-badge k-badge-success">健康</span>');
+      
+      const creditUsed = Number(acc.credit_used || 0).toFixed(2);
+      const creditLimit = Number(acc.credit_limit || 0).toFixed(2);
+      const creditPct = creditLimit > 0 ? ((acc.credit_used / acc.credit_limit) * 100).toFixed(1) : '0.0';
+
+      content += `
+        <tr>
+          <td data-label="邮箱" style="font-size:12px;font-family:monospace">${escapeHtml(acc.email || 'ID:' + acc.id)}</td>
+          <td data-label="状态">${statusBadge}</td>
+          <td data-label="区域" style="font-size:12px">${escapeHtml(acc.region || '-')}</td>
+          <td data-label="额度使用" style="font-size:12px">${creditUsed}/${creditLimit} (${creditPct}%)</td>
+        </tr>
+      `;
+    });
+
+    content += `
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  content += `
+        <div style="margin-top: 20px; text-align: right">
+          <button class="ui-btn ui-btn-secondary" onclick="document.getElementById('cardHealthModal').remove()">关闭</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  modal.innerHTML = content;
+  document.body.appendChild(modal);
+}
+
+// 显示批量检测结果
+function showBatchHealthModal(results) {
+  const modal = document.createElement('div');
+  modal.id = 'batchHealthModal';
+  modal.className = 'modal-overlay active';
+
+  let totalBound = 0;
+  let totalHealthy = 0;
+  let totalUsed = 0;
+  let totalSuspended = 0;
+  let totalDeleted = 0;
+
+  results.forEach(r => {
+    totalBound += r.total_bound || 0;
+    totalHealthy += r.healthy || 0;
+    totalUsed += r.used || 0;
+    totalSuspended += r.suspended || 0;
+    totalDeleted += r.deleted || 0;
+  });
+
+  let content = `
+    <div class="modal-content" style="max-width: 1000px">
+      <div class="modal-header">
+        <span class="modal-title">批量健康检测结果 (${results.length} 张卡密)</span>
+        <button type="button" class="modal-close" onclick="document.getElementById('batchHealthModal').remove()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; padding: 16px; background: #f9fafb; border-radius: 8px">
+          <div style="text-align:center">
+            <div style="font-size:12px;color:#6b7280;margin-bottom:4px">总绑定</div>
+            <div style="font-size:24px;font-weight:600">${totalBound}</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:12px;color:#6b7280;margin-bottom:4px">健康</div>
+            <div style="font-size:24px;font-weight:600;color:#22c55e">${totalHealthy}</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:12px;color:#6b7280;margin-bottom:4px">已使用</div>
+            <div style="font-size:24px;font-weight:600;color:#f59e0b">${totalUsed}</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:12px;color:#6b7280;margin-bottom:4px">已封禁</div>
+            <div style="font-size:24px;font-weight:600;color:#dc2626">${totalSuspended}</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:12px;color:#6b7280;margin-bottom:4px">已删除</div>
+            <div style="font-size:24px;font-weight:600;color:#9ca3af">${totalDeleted}</div>
+          </div>
+        </div>
+
+        <div style="max-height: 500px; overflow-y: auto">
+          <table class="k-table">
+            <thead>
+              <tr>
+                <th>卡密</th>
+                <th>总绑定</th>
+                <th>健康</th>
+                <th>已使用</th>
+                <th>已封禁</th>
+                <th>已删除</th>
+                <th>平均额度</th>
+              </tr>
+            </thead>
+            <tbody>
+  `;
+
+  results.forEach(r => {
+    const creditPct = Number(r.avg_credit_pct || 0).toFixed(1);
+    const hasIssues = (r.deleted > 0 || r.suspended > 0 || r.used > 0);
+    const rowStyle = hasIssues ? 'background:#fef2f2' : '';
+
+    content += `
+      <tr style="${rowStyle}">
+        <td data-label="卡密" style="font-size:12px;font-family:monospace">${escapeHtml(r.card_code || r.card_id)}</td>
+        <td data-label="总绑定">${r.total_bound || 0}</td>
+        <td data-label="健康" style="color:#22c55e;font-weight:600">${r.healthy || 0}</td>
+        <td data-label="已使用" style="color:#f59e0b">${r.used || 0}</td>
+        <td data-label="已封禁" style="color:#dc2626">${r.suspended || 0}</td>
+        <td data-label="已删除" style="color:#9ca3af">${r.deleted || 0}</td>
+        <td data-label="平均额度" style="font-size:12px">${creditPct}%</td>
+      </tr>
+    `;
+  });
+
+  content += `
+            </tbody>
+          </table>
+        </div>
+
+        <div style="margin-top: 20px; text-align: right">
+          <button class="ui-btn ui-btn-secondary" onclick="document.getElementById('batchHealthModal').remove()">关闭</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  modal.innerHTML = content;
+  document.body.appendChild(modal);
 }

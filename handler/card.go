@@ -495,3 +495,183 @@ func ListCardLogs(c *gin.Context) {
 	database.DB.Where("card_id = ?", cardID).Order("id desc").Find(&logs)
 	c.JSON(http.StatusOK, gin.H{"code": 0, "data": logs})
 }
+
+// CheckCardHealth 检测卡密绑定账号的健康状态
+func CheckCardHealth(c *gin.Context) {
+	idStr := c.Param("id")
+	cardID, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "卡密ID无效"})
+		return
+	}
+
+	// 查询卡密是否存在
+	var card model.Card
+	if err := database.DB.First(&card, cardID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 1, "message": "卡密不存在"})
+		return
+	}
+
+	// 查询该卡密关联的所有账号ID
+	var accountIDs []uint
+	database.DB.Model(&model.CardAccount{}).
+		Where("card_id = ?", cardID).
+		Pluck("account_id", &accountIDs)
+
+	// 统计信息
+	healthStats := gin.H{
+		"card_id":        cardID,
+		"card_code":      card.Code,
+		"total_bound":    len(accountIDs),
+		"deleted":        0,
+		"healthy":        0,
+		"used":           0,
+		"suspended":      0,
+		"total_credit":   0.0,
+		"used_credit":    0.0,
+		"avg_credit_pct": 0.0,
+		"accounts":       []gin.H{},
+	}
+
+	if len(accountIDs) == 0 {
+		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "该卡密暂无绑定账号", "data": healthStats})
+		return
+	}
+
+	// 查询实际存在的账号
+	var accounts []model.Account
+	database.DB.Where("id IN (?)", accountIDs).Find(&accounts)
+
+	// 计算已删除账号数
+	healthStats["deleted"] = len(accountIDs) - len(accounts)
+
+	// 统计各状态账号
+	accountDetails := make([]gin.H, 0, len(accounts))
+	var totalCredit, usedCredit float64
+
+	for _, acc := range accounts {
+		detail := gin.H{
+			"id":           acc.ID,
+			"email":        acc.Email,
+			"status":       acc.Status,
+			"used":         acc.Used,
+			"credit_used":  acc.CreditUsed,
+			"credit_limit": acc.CreditLimit,
+			"region":       acc.Region,
+			"provider":     acc.Provider,
+		}
+		accountDetails = append(accountDetails, detail)
+
+		totalCredit += acc.CreditLimit
+		usedCredit += acc.CreditUsed
+
+		// 统计各类型
+		if acc.Used {
+			healthStats["used"] = healthStats["used"].(int) + 1
+		} else if acc.Status == model.AccountStatusSuspended {
+			healthStats["suspended"] = healthStats["suspended"].(int) + 1
+		} else if acc.Status == model.AccountStatusActive {
+			healthStats["healthy"] = healthStats["healthy"].(int) + 1
+		}
+	}
+
+	healthStats["accounts"] = accountDetails
+	healthStats["total_credit"] = totalCredit
+	healthStats["used_credit"] = usedCredit
+	if totalCredit > 0 {
+		healthStats["avg_credit_pct"] = (usedCredit / totalCredit) * 100
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "检测完成",
+		"data":    healthStats,
+	})
+}
+
+// BatchCheckCardsHealth 批量检测多个卡密的健康状态
+func BatchCheckCardsHealth(c *gin.Context) {
+	var req struct {
+		CardIDs []uint `json:"card_ids" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "请求参数错误"})
+		return
+	}
+
+	if len(req.CardIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "卡密ID列表不能为空"})
+		return
+	}
+
+	if len(req.CardIDs) > 100 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "单次最多检测100个卡密"})
+		return
+	}
+
+	results := make([]gin.H, 0, len(req.CardIDs))
+
+	for _, cardID := range req.CardIDs {
+		// 查询卡密
+		var card model.Card
+		if err := database.DB.First(&card, cardID).Error; err != nil {
+			results = append(results, gin.H{
+				"card_id": cardID,
+				"error":   "卡密不存在",
+			})
+			continue
+		}
+
+		// 查询关联账号ID
+		var accountIDs []uint
+		database.DB.Model(&model.CardAccount{}).
+			Where("card_id = ?", cardID).
+			Pluck("account_id", &accountIDs)
+
+		stats := gin.H{
+			"card_id":        cardID,
+			"card_code":      card.Code,
+			"total_bound":    len(accountIDs),
+			"deleted":        0,
+			"healthy":        0,
+			"used":           0,
+			"suspended":      0,
+			"avg_credit_pct": 0.0,
+		}
+
+		if len(accountIDs) > 0 {
+			// 查询实际账号
+			var accounts []model.Account
+			database.DB.Where("id IN (?)", accountIDs).Find(&accounts)
+
+			stats["deleted"] = len(accountIDs) - len(accounts)
+
+			var totalCredit, usedCredit float64
+			for _, acc := range accounts {
+				totalCredit += acc.CreditLimit
+				usedCredit += acc.CreditUsed
+
+				if acc.Used {
+					stats["used"] = stats["used"].(int) + 1
+				} else if acc.Status == model.AccountStatusSuspended {
+					stats["suspended"] = stats["suspended"].(int) + 1
+				} else if acc.Status == model.AccountStatusActive {
+					stats["healthy"] = stats["healthy"].(int) + 1
+				}
+			}
+
+			if totalCredit > 0 {
+				stats["avg_credit_pct"] = (usedCredit / totalCredit) * 100
+			}
+		}
+
+		results = append(results, stats)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "批量检测完成",
+		"data":    results,
+	})
+}

@@ -146,6 +146,8 @@ func main() {
 		admin.POST("/cards/shop-products/delist-group", handler.DelistCommerceProductGroupCards)
 		admin.DELETE("/cards/:id", handler.DeleteCard)
 		admin.POST("/cards/batch-delete", handler.BatchDeleteCards)
+		admin.GET("/cards/:id/health", handler.CheckCardHealth)
+		admin.POST("/cards/batch-health", handler.BatchCheckCardsHealth)
 		admin.GET("/cards/:id/logs", handler.ListCardLogs)
 
 		admin.GET("/oplogs", handler.ListOpLogs)

@@ -2651,3 +2651,59 @@ textarea.k-input::-webkit-scrollbar-corner {
         font-size: 16px !important;
     }
 }
+
+/* 卡密健康检测统计卡片 */
+.k-stat-card {
+  padding: 16px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.k-stat-label {
+  font-size: 13px;
+  color: #6b7280;
+  margin-bottom: 8px;
+}
+
+.k-stat-value {
+  font-size: 28px;
+  font-weight: 600;
+  color: #111827;
+}
+
+/* 健康检测表格样式 */
+.k-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.k-table thead {
+  background: #f9fafb;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.k-table th {
+  padding: 12px;
+  text-align: left;
+  font-weight: 600;
+  color: #374151;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.k-table td {
+  padding: 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.k-table tbody tr:hover {
+  background: #f9fafb;
+}
+
+.k-table tbody tr:last-child td {
+  border-bottom: none;
+}
