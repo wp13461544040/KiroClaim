@@ -604,7 +604,11 @@ async function checkCardHealth(cardId, cardCode) {
   showCardHealthModal(initialData, true); // 传入 true 表示正在刷新
 
   // 第二步：建立SSE连接实时更新（通过URL参数传递Token）
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('adminToken');
+  if (!token) {
+    showToast('未登录或登录已过期', 'error');
+    return;
+  }
   const eventSource = new EventSource(`/admin/cards/${cardId}/health?token=${encodeURIComponent(token)}`);
 
   let accountsMap = {}; // 用于存储账号更新
