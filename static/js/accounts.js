@@ -972,13 +972,21 @@ async function loadAssignedAccounts(page = 1) {
     const creditText = creditLimit > 0 ? `${creditUsed.toFixed(1)} / ${creditLimit.toFixed(0)}` : '-';
     const checked = selectedAssignedIds.has(a.ID) ? 'checked' : '';
 
+    // 正确判断健康状态：优先判断 suspended，然后判断额度是否用完
+    let healthStatus = 'active'; // 默认正常
+    if (a.Status === 'suspended') {
+      healthStatus = 'suspended'; // 已封禁
+    } else if (creditLimit > 0 && creditUsed >= creditLimit) {
+      healthStatus = 'used'; // 额度已用完
+    }
+
     const fmtTime = v => v ? new Date(v).toLocaleString('zh-CN', {hour12:false, month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'}) : '-';
 
     return `<tr>
       <td data-label="选择"><input type="checkbox" class="k-checkbox" ${checked} onchange="toggleAssignedSelect(${a.ID}, this.checked)"></td>
       <td data-label="ID" style="color:#999">${a.ID}</td>
       <td data-label="邮箱" class="account-email-cell">${a.Email || '-'}</td>
-      <td data-label="健康状态">${healthBadge(a.Used ? 'used' : a.Status)}</td>
+      <td data-label="健康状态">${healthBadge(healthStatus)}</td>
       <td data-label="订阅" class="account-subscription-cell">${subscriptionBadge(a.Subscription)}</td>
       <td data-label="额度用量" class="account-usage-cell">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--text-muted);max-width:160px">
