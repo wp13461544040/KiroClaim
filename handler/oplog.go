@@ -63,3 +63,40 @@ func ListOpLogs(c *gin.Context) {
 		"total": total, "page": page, "size": size, "list": logs,
 	}})
 }
+
+// BatchDeleteOpLogs 批量删除操作日志
+func BatchDeleteOpLogs(c *gin.Context) {
+	var req struct {
+		IDs []uint `json:"ids" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "参数错误: " + err.Error()})
+		return
+	}
+	if len(req.IDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "请选择要删除的日志"})
+		return
+	}
+
+	result := database.DB.Where("id IN ?", req.IDs).Delete(&model.OpLog{})
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": result.Error.Error()})
+		return
+	}
+
+	AddOpLogWithCtx(c, "delete", "批量删除操作日志 "+strconv.Itoa(len(req.IDs))+" 条，实际删除 "+strconv.FormatInt(result.RowsAffected, 10)+" 条", "admin")
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已删除", "data": gin.H{"deleted": result.RowsAffected}})
+}
+
+// ClearOpLogs 清空操作日志
+func ClearOpLogs(c *gin.Context) {
+	result := database.DB.Where("1=1").Delete(&model.OpLog{})
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": result.Error.Error()})
+		return
+	}
+
+	// 注意：清空日志后，这条日志本身也会被记录
+	AddOpLogWithCtx(c, "clear", "清空操作日志，共删除 "+strconv.FormatInt(result.RowsAffected, 10)+" 条", "admin")
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "日志已清空", "data": gin.H{"deleted": result.RowsAffected}})
+}

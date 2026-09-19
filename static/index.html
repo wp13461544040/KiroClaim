@@ -343,7 +343,7 @@
             <span class="k-card-title">操作日志</span>
           </div>
           <div class="k-card-body">
-            <div style="display:flex; gap:12px; margin-bottom:20px; align-items:center">
+            <div style="display:flex; gap:12px; margin-bottom:20px; align-items:center; flex-wrap:wrap">
               <div class="k-dropdown" id="logActionDropdown">
                 <div class="k-dropdown-trigger" onclick="toggleDropdown('logActionDropdown')">
                   <span id="logActionText">全部操作</span>
@@ -358,11 +358,14 @@
                   <div class="k-dropdown-item" onclick="selectLogAction('export', '导出')">导出</div>
                 </div>
               </div>
+              <button class="ui-btn ui-btn-sm ui-btn-danger" onclick="batchDeleteLogs()" style="margin-left:auto">批量删除</button>
+              <button class="ui-btn ui-btn-sm ui-btn-danger" onclick="clearAllLogs()">清空日志</button>
             </div>
             <div class="pagination" id="logsPagination"></div>
             <table>
               <thead>
                 <tr>
+                  <th style="width:40px"><input type="checkbox" id="logsSelectAll" onchange="toggleSelectAllLogs(this.checked)"></th>
                   <th>ID</th>
                   <th>操作类型</th>
                   <th>详情</th>

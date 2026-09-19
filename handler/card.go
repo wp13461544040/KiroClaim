@@ -339,15 +339,27 @@ func DeleteCard(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "无效的 ID"})
 		return
 	}
-	if err := releaseAccountsForCards([]uint{uint(cardID64)}); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": err.Error()})
+	cardID := uint(cardID64)
+	
+	// 删除关联账号（级联删除，不返回账号池）
+	var deletedAccounts int64
+	result := database.DB.Where("card_id = ?", cardID).Delete(&model.Account{})
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "删除关联账号失败: " + result.Error.Error()})
 		return
 	}
+	deletedAccounts = result.RowsAffected
+	
 	if err := database.DB.Delete(&model.Card{}, id).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": err.Error()})
 		return
 	}
-	AddOpLogWithCtx(c, "delete", "删除卡密 ID:"+id, "admin")
+	
+	logMsg := "删除卡密 ID:" + id
+	if deletedAccounts > 0 {
+		logMsg += fmt.Sprintf("，级联删除 %d 个关联账号", deletedAccounts)
+	}
+	AddOpLogWithCtx(c, "delete", logMsg, "admin")
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已删除"})
 }
 
@@ -363,16 +375,27 @@ func BatchDeleteCards(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "请选择要删除的卡密"})
 		return
 	}
-	if err := releaseAccountsForCards(req.IDs); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": err.Error()})
+	
+	// 删除关联账号（级联删除，不返回账号池）
+	var deletedAccounts int64
+	accountResult := database.DB.Where("card_id IN ?", req.IDs).Delete(&model.Account{})
+	if accountResult.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "删除关联账号失败: " + accountResult.Error.Error()})
 		return
 	}
+	deletedAccounts = accountResult.RowsAffected
+	
 	result := database.DB.Where("id IN ?", req.IDs).Delete(&model.Card{})
 	if result.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": result.Error.Error()})
 		return
 	}
-	AddOpLogWithCtx(c, "delete", "批量删除卡密 "+strconv.Itoa(len(req.IDs))+" 张，实际删除 "+strconv.FormatInt(result.RowsAffected, 10)+" 张", "admin")
+	
+	logMsg := "批量删除卡密 " + strconv.Itoa(len(req.IDs)) + " 张，实际删除 " + strconv.FormatInt(result.RowsAffected, 10) + " 张"
+	if deletedAccounts > 0 {
+		logMsg += fmt.Sprintf("，级联删除 %d 个关联账号", deletedAccounts)
+	}
+	AddOpLogWithCtx(c, "delete", logMsg, "admin")
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已删除", "data": gin.H{"deleted": result.RowsAffected}})
 }
 

@@ -149,6 +149,8 @@ func main() {
 		admin.GET("/cards/:id/logs", handler.ListCardLogs)
 
 		admin.GET("/oplogs", handler.ListOpLogs)
+		admin.POST("/oplogs/batch-delete", handler.BatchDeleteOpLogs)
+		admin.POST("/oplogs/clear", handler.ClearOpLogs)
 
 		admin.POST("/logout", handler.AdminLogout)
 		admin.POST("/password", handler.AdminChangePassword)
