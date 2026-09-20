@@ -775,7 +775,6 @@ function showCardHealthModal(data, isRefreshing = false) {
               <tr>
                 <th>邮箱</th>
                 <th>状态</th>
-                <th>区域</th>
                 <th>额度使用</th>
                 <th>更新时间</th>
                 <th>数据来源</th>
@@ -887,7 +886,6 @@ function generateAccountRowContent(acc, idx) {
   return `
     <td data-label="邮箱" style="font-size:12px;font-family:monospace">${escapeHtml(acc.email || 'ID:' + acc.id)}</td>
     <td data-label="状态">${statusBadge}</td>
-    <td data-label="区域" style="font-size:12px">${escapeHtml(acc.region || '-')}</td>
     <td data-label="额度使用" style="font-size:12px">${creditUsed}/${creditLimit} (${creditPct}%)</td>
     <td data-label="更新时间" style="font-size:11px;color:#6b7280">${updatedAt}</td>
     <td data-label="数据来源">${dataSourceBadge}</td>
