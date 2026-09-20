@@ -777,6 +777,8 @@ function showCardHealthModal(data, isRefreshing = false) {
                 <th>状态</th>
                 <th>区域</th>
                 <th>额度使用</th>
+                <th>更新时间</th>
+                <th>数据来源</th>
               </tr>
             </thead>
             <tbody id="accountsTableBody">
@@ -874,12 +876,60 @@ function generateAccountRowContent(acc, idx) {
   const creditLimit = Number(acc.credit_limit || 0).toFixed(2);
   const creditPct = creditLimit > 0 ? ((acc.credit_used / acc.credit_limit) * 100).toFixed(1) : '0.0';
 
+  // 格式化更新时间
+  const updatedAt = acc.updated_at ? formatDateTime(acc.updated_at) : '-';
+  
+  // 数据来源标记
+  const dataSourceBadge = acc.data_source === 'realtime' ? 
+    '<span class="k-badge" style="background:#10b981;color:#fff">实时</span>' :
+    '<span class="k-badge" style="background:#6b7280;color:#fff">缓存</span>';
+
   return `
     <td data-label="邮箱" style="font-size:12px;font-family:monospace">${escapeHtml(acc.email || 'ID:' + acc.id)}</td>
     <td data-label="状态">${statusBadge}</td>
     <td data-label="区域" style="font-size:12px">${escapeHtml(acc.region || '-')}</td>
     <td data-label="额度使用" style="font-size:12px">${creditUsed}/${creditLimit} (${creditPct}%)</td>
+    <td data-label="更新时间" style="font-size:11px;color:#6b7280">${updatedAt}</td>
+    <td data-label="数据来源">${dataSourceBadge}</td>
   `;
+}
+
+// 格式化日期时间（辅助函数）
+function formatDateTime(dateStr) {
+  if (!dateStr) return '-';
+  try {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    // 1小时内显示相对时间
+    if (diffMins < 60) {
+      if (diffMins < 1) return '刚刚';
+      return `${diffMins}分钟前`;
+    }
+    
+    // 24小时内显示小时
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) {
+      return `${diffHours}小时前`;
+    }
+    
+    // 否则显示日期时间
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    
+    // 今年的话省略年份
+    if (year === now.getFullYear()) {
+      return `${month}-${day} ${hours}:${minutes}`;
+    }
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  } catch (e) {
+    return dateStr;
+  }
 }
 
 // 显示批量检测结果

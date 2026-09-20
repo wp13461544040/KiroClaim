@@ -554,15 +554,18 @@ func CheckCardHealthQuick(c *gin.Context) {
 
 	for _, acc := range accounts {
 		detail := gin.H{
-			"id":           acc.ID,
-			"email":        acc.Email,
-			"status":       acc.Status,
-			"used":         acc.Used,
-			"credit_used":  acc.CreditUsed,
-			"credit_limit": acc.CreditLimit,
-			"region":       acc.Region,
-			"provider":     acc.Provider,
-			"refreshing":   false, // 初始未刷新
+			"id":              acc.ID,
+			"email":           acc.Email,
+			"status":          acc.Status,
+			"used":            acc.Used,
+			"credit_used":     acc.CreditUsed,
+			"credit_limit":    acc.CreditLimit,
+			"region":          acc.Region,
+			"provider":        acc.Provider,
+			"last_checked_at": acc.LastCheckedAt, // 最后检测时间
+			"updated_at":      acc.UpdatedAt,     // 数据更新时间
+			"data_source":     "cached",          // 标记为缓存数据
+			"refreshing":      false,             // 初始未刷新
 		}
 		accountDetails = append(accountDetails, detail)
 
@@ -660,15 +663,18 @@ func CheckCardHealth(c *gin.Context) {
 				log.Printf("查询账号 %d 健康状态失败: %v", account.ID, err)
 				// 使用缓存数据
 				detail = gin.H{
-					"id":           account.ID,
-					"email":        account.Email,
-					"status":       account.Status,
-					"used":         account.Used,
-					"credit_used":  account.CreditUsed,
-					"credit_limit": account.CreditLimit,
-					"region":       account.Region,
-					"provider":     account.Provider,
-					"error":        err.Error(),
+					"id":              account.ID,
+					"email":           account.Email,
+					"status":          account.Status,
+					"used":            account.Used,
+					"credit_used":     account.CreditUsed,
+					"credit_limit":    account.CreditLimit,
+					"region":          account.Region,
+					"provider":        account.Provider,
+					"last_checked_at": account.LastCheckedAt,
+					"updated_at":      account.UpdatedAt,
+					"data_source":     "cached", // 标记为缓存
+					"error":           err.Error(),
 				}
 			}
 
@@ -773,14 +779,17 @@ func CheckCardHealthLegacy(c *gin.Context) {
 
 			mu.Lock()
 			accountDetails[idx] = gin.H{
-				"id":           account.ID,
-				"email":        account.Email,
-				"status":       account.Status,
-				"used":         account.Used,
-				"credit_used":  account.CreditUsed,
-				"credit_limit": account.CreditLimit,
-				"region":       account.Region,
-				"provider":     account.Provider,
+				"id":              account.ID,
+				"email":           account.Email,
+				"status":          account.Status,
+				"used":            account.Used,
+				"credit_used":     account.CreditUsed,
+				"credit_limit":    account.CreditLimit,
+				"region":          account.Region,
+				"provider":        account.Provider,
+				"last_checked_at": account.LastCheckedAt, // 最后检测时间
+				"updated_at":      account.UpdatedAt,     // 数据更新时间
+				"data_source":     "realtime",            // 标记为实时数据
 			}
 			mu.Unlock()
 		}(i, acc)
@@ -835,14 +844,17 @@ func queryAccountHealthFromUpstream(account model.Account) (gin.H, error) {
 	}
 
 	return gin.H{
-		"id":           account.ID,
-		"email":        account.Email,
-		"status":       account.Status,
-		"used":         account.Used,
-		"credit_used":  account.CreditUsed,
-		"credit_limit": account.CreditLimit,
-		"region":       account.Region,
-		"provider":     account.Provider,
+		"id":              account.ID,
+		"email":           account.Email,
+		"status":          account.Status,
+		"used":            account.Used,
+		"credit_used":     account.CreditUsed,
+		"credit_limit":    account.CreditLimit,
+		"region":          account.Region,
+		"provider":        account.Provider,
+		"last_checked_at": account.LastCheckedAt, // 最后检测时间
+		"updated_at":      account.UpdatedAt,     // 数据更新时间
+		"data_source":     "realtime",            // 标记为实时数据
 	}, nil
 }
 
