@@ -100,7 +100,7 @@ async function loadCards(page = 1) {
   if (!tbody) return;
   if (r.code === 0 && r.data?.filters) updateCardFilterOptions(r.data.filters);
   if (r.code !== 0 || !r.data?.list?.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-muted)">无卡密记录</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-muted)">无卡密记录</td></tr>';
     renderPagination('cardsPagination', 0, size, 1, loadCards, 'cards');
     updateCardBatchBtn();
     return;
@@ -111,12 +111,19 @@ async function loadCards(page = 1) {
     const multiLabel = c.AccountCount > 1 ? `<span class="k-badge" style="background:#eff6ff;color:#1d4ed8">${c.AccountCount}号</span>` : '';
     const subscription = cardSubscriptionLabel(c.Subscription || '');
     const status = c.Status || (c.UsedAt ? 'active' : 'unused');
+    const createdAt = c.CreatedAt ? new Date(c.CreatedAt).toLocaleString('zh-CN', {hour12: false}) : '-';
+    const usedAt = c.UsedAt ? new Date(c.UsedAt).toLocaleString('zh-CN', {hour12: false}) : '-';
+    const remark = escapeHtml(c.Remark || '');
+    const remarkDisplay = remark || '<span style="color:#999">无</span>';
     return `<tr>
       <td data-label="选择"><input type="checkbox" class="k-checkbox" ${checked} onchange="toggleCardSelect(${c.ID}, this.checked)"></td>
       <td data-label="ID">${c.ID}</td>
       <td data-label="序列号"><code style="background:#f1f1f1;padding:2px 4px;white-space:nowrap">${escapeHtml(c.Code)}</code></td>
       <td data-label="账号订阅" style="font-size:12px;white-space:nowrap">${escapeHtml(subscription)} ${multiLabel}</td>
       <td data-label="状态">${cardStatusBadge(status)}</td>
+      <td data-label="创建时间" style="font-size:12px;color:#666;white-space:nowrap">${createdAt}</td>
+      <td data-label="提取时间" style="font-size:12px;color:#666;white-space:nowrap">${usedAt}</td>
+      <td data-label="备注" style="font-size:12px;max-width:200px"><span class="card-remark-text" onclick="editCardRemark(${c.ID}, '${escapeAttr(remark)}')" style="cursor:pointer;color:#666" title="点击编辑备注">${remarkDisplay}</span></td>
       <td data-label="商城">${renderCardShopCell(c)}</td>
       <td data-label="操作">
         <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -464,6 +471,34 @@ async function deleteCard(id) {
   } else {
     showToast('删除失败：' + (r.message || r.msg || '未知错误'), 'error');
   }
+}
+
+// 编辑卡密备注
+async function editCardRemark(cardId, currentRemark) {
+  const newRemark = prompt('请输入备注（最多500字）：', currentRemark || '');
+  if (newRemark === null) return; // 用户取消
+  
+  if (newRemark.length > 500) {
+    showToast('备注长度不能超过500字', 'error');
+    return;
+  }
+
+  const r = await api('PATCH', `/admin/cards/${cardId}/remark`, { remark: newRemark });
+  if (r.code === 0) {
+    showToast('备注已更新', 'success');
+    // 刷新当前页
+    loadCards(getCurrentPage());
+  } else {
+    showToast('备注更新失败：' + (r.message || r.msg || '未知错误'), 'error');
+  }
+}
+
+// 获取当前页码
+function getCurrentPage() {
+  const pagination = document.getElementById('cardsPagination');
+  if (!pagination) return 1;
+  const activeBtn = pagination.querySelector('.page-btn.active');
+  return activeBtn ? parseInt(activeBtn.textContent) || 1 : 1;
 }
 
 function resetCardFilters() {

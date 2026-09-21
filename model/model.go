@@ -88,6 +88,7 @@ type Card struct {
 	UsedAt       *time.Time
 	AccountCount int    `gorm:"default:1"`
 	Subscription string `gorm:"type:varchar(50);default:''"`
+	Remark       string `gorm:"type:varchar(500);default:''"`
 }
 
 type CardAccount struct {

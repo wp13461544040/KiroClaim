@@ -146,6 +146,7 @@ func main() {
 		admin.POST("/cards/shop-products/delist-group", handler.DelistCommerceProductGroupCards)
 		admin.DELETE("/cards/:id", handler.DeleteCard)
 		admin.POST("/cards/batch-delete", handler.BatchDeleteCards)
+		admin.PATCH("/cards/:id/remark", handler.UpdateCardRemark)
 		admin.GET("/cards/:id/health/quick", handler.CheckCardHealthQuick)  // 快速返回缓存
 		admin.GET("/cards/:id/health", handler.CheckCardHealth)              // 并发查询上游
 		admin.POST("/cards/batch-health", handler.BatchCheckCardsHealth)

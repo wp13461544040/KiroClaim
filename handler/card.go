@@ -30,6 +30,7 @@ type cardListItem struct {
 	AccountCount       int
 	Subscription       string
 	Status             string
+	Remark             string
 	ShopListed         bool
 	ShopProductID      uint
 	ShopProductName    string
@@ -49,6 +50,7 @@ func buildCardListItem(card model.Card) cardListItem {
 		AccountCount: card.AccountCount,
 		Subscription: card.Subscription,
 		Status:       cardStatusFromUsedAt(card.UsedAt),
+		Remark:       card.Remark,
 	}
 }
 
@@ -981,4 +983,38 @@ func BatchCheckCardsHealth(c *gin.Context) {
 		"message": "批量检测完成",
 		"data":    results,
 	})
+}
+
+// UpdateCardRemark 更新卡密备注
+func UpdateCardRemark(c *gin.Context) {
+	idStr := c.Param("id")
+	cardID, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil || cardID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "卡密ID无效"})
+		return
+	}
+
+	var req struct {
+		Remark string `json:"remark" binding:"max=500"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "备注长度不能超过500字"})
+		return
+	}
+
+	// 查询卡密是否存在
+	var card model.Card
+	if err := database.DB.First(&card, cardID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 1, "message": "卡密不存在"})
+		return
+	}
+
+	// 更新备注
+	if err := database.DB.Model(&card).Update("remark", req.Remark).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "更新失败: " + err.Error()})
+		return
+	}
+
+	AddOpLogWithCtx(c, "update_remark", "更新卡密 "+card.Code+" 备注", "admin")
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "备注已更新"})
 }
