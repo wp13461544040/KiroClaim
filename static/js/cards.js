@@ -696,10 +696,11 @@ function calculateHealthStats(cardId, cardCode, accounts) {
     totalCredit += acc.credit_limit || 0;
     usedCredit += acc.credit_used || 0;
 
-    if (acc.used) {
-      used++;
-    } else if (acc.status === 'suspended') {
+    // 封禁状态优先级最高
+    if (acc.status === 'suspended') {
       suspended++;
+    } else if (acc.used) {
+      used++;
     } else if (acc.status === 'active') {
       healthy++;
     }

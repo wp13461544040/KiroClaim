@@ -574,11 +574,11 @@ func CheckCardHealthQuick(c *gin.Context) {
 		totalCredit += acc.CreditLimit
 		usedCredit += acc.CreditUsed
 
-		// 统计各类型
-		if acc.Used {
-			healthStats["used"] = healthStats["used"].(int) + 1
-		} else if acc.Status == model.AccountStatusSuspended {
+		// 统计各类型（封禁状态优先级最高）
+		if acc.Status == model.AccountStatusSuspended {
 			healthStats["suspended"] = healthStats["suspended"].(int) + 1
+		} else if acc.Used {
+			healthStats["used"] = healthStats["used"].(int) + 1
 		} else if acc.Status == model.AccountStatusActive {
 			healthStats["healthy"] = healthStats["healthy"].(int) + 1
 		}
@@ -952,10 +952,11 @@ func BatchCheckCardsHealth(c *gin.Context) {
 					totalCredit += account.CreditLimit
 					usedCredit += account.CreditUsed
 
-					if account.Used {
-						used++
-					} else if account.Status == model.AccountStatusSuspended {
+					// 封禁状态优先级最高
+					if account.Status == model.AccountStatusSuspended {
 						suspended++
+					} else if account.Used {
+						used++
 					} else if account.Status == model.AccountStatusActive {
 						healthy++
 					}

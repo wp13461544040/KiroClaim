@@ -247,8 +247,8 @@ func buildHealthUpdates(r healthResult, now time.Time) map[string]interface{} {
 		updates["credit_limit"] = r.creditLimit
 	}
 	
-	// 自动标记已使用：使用过额度或账号封禁时，标记为已使用
-	if r.creditUsed > 0 || r.status == model.AccountStatusSuspended {
+	// 自动标记已使用：仅当实际使用过额度时标记（封禁状态不自动标记为已使用）
+	if r.creditUsed > 0 {
 		updates["used"] = true
 		updates["used_at"] = now
 	}
