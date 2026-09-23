@@ -92,14 +92,6 @@ func ValidateToken(tokenString string) (*Claims, error) {
 
 func AdminAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ip := c.ClientIP()
-		if LoginLimit != nil && LoginLimit.IsLocked(ip) {
-			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
-				"code": 1, "message": "登录失败次数过多，请稍后再试",
-			})
-			return
-		}
-
 		var tokenString string
 
 		// 优先从 Header 读取 Token
@@ -130,10 +122,6 @@ func AdminAuth() gin.HandlerFunc {
 				"code": 1, "message": "Token 无效或已过期",
 			})
 			return
-		}
-
-		if LoginLimit != nil {
-			LoginLimit.ResetIP(ip)
 		}
 
 		c.Set("username", claims.Username)
