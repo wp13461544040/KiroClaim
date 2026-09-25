@@ -345,48 +345,48 @@ func DeleteCard(c *gin.Context) {
 		return
 	}
 	cardID := uint(cardID64)
-	
-	// 1. 获取关联的账号ID列表
-	var cardAccounts []model.CardAccount
-	if err := database.DB.Where("card_id = ?", cardID).Find(&cardAccounts).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "查询关联账号失败: " + err.Error()})
-		return
-	}
-	
-	var accountIDs []uint
-	for _, ca := range cardAccounts {
-		accountIDs = append(accountIDs, ca.AccountID)
-	}
-	
-	// 2. 删除关联关系
-	if err := database.DB.Where("card_id = ?", cardID).Delete(&model.CardAccount{}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "删除关联关系失败: " + err.Error()})
-		return
-	}
-	
-	// 3. 删除账号本身
+
+	// 解绑、删账号、删卡密必须在同一事务内完成，
+	// 否则中途失败会留下「关联已删、账号还在」这类无法从界面察觉的中间态。
 	var deletedAccounts int64
-	if len(accountIDs) > 0 {
-		result := database.DB.Where("id IN ?", accountIDs).Delete(&model.Account{})
-		if result.Error != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "删除账号失败: " + result.Error.Error()})
-			return
+	if err := database.DB.Transaction(func(tx *gorm.DB) error {
+		// 1. 获取关联的账号 ID 列表
+		var accountIDs []uint
+		if err := tx.Model(&model.CardAccount{}).
+			Where("card_id = ?", cardID).
+			Distinct().
+			Pluck("account_id", &accountIDs).Error; err != nil {
+			return fmt.Errorf("查询关联账号失败: %w", err)
 		}
-		deletedAccounts = result.RowsAffected
-	}
-	
-	// 4. 删除卡密
-	if err := database.DB.Delete(&model.Card{}, id).Error; err != nil {
+
+		// 2. 删除关联关系
+		if err := tx.Where("card_id = ?", cardID).Delete(&model.CardAccount{}).Error; err != nil {
+			return fmt.Errorf("删除关联关系失败: %w", err)
+		}
+
+		// 3. 物理删除账号本身（走 Unscoped，否则只置 deleted_at 会留下幽灵数据）
+		if len(accountIDs) > 0 {
+			result := deleteAccountsPhysicallyTx(tx, accountIDs)
+			if result.Error != nil {
+				return fmt.Errorf("删除账号失败: %w", result.Error)
+			}
+			deletedAccounts = result.RowsAffected
+		}
+
+		// 4. 删除卡密
+		return tx.Delete(&model.Card{}, cardID).Error
+	}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": err.Error()})
 		return
 	}
-	
+
 	logMsg := "删除卡密 ID:" + id
 	if deletedAccounts > 0 {
 		logMsg += fmt.Sprintf("，级联删除 %d 个账号", deletedAccounts)
 	}
 	AddOpLogWithCtx(c, "delete", logMsg, "admin")
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已删除"})
+	// 返回实际删除的账号数，前端提示不必再写死文案
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已删除", "data": gin.H{"deletedAccounts": deletedAccounts}})
 }
 
 func BatchDeleteCards(c *gin.Context) {
@@ -402,48 +402,50 @@ func BatchDeleteCards(c *gin.Context) {
 		return
 	}
 	
-	// 1. 获取所有关联的账号ID列表
-	var cardAccounts []model.CardAccount
-	if err := database.DB.Where("card_id IN ?", req.IDs).Find(&cardAccounts).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "查询关联账号失败: " + err.Error()})
-		return
-	}
-	
-	var accountIDs []uint
-	for _, ca := range cardAccounts {
-		accountIDs = append(accountIDs, ca.AccountID)
-	}
-	
-	// 2. 删除关联关系
-	if err := database.DB.Where("card_id IN ?", req.IDs).Delete(&model.CardAccount{}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "删除关联关系失败: " + err.Error()})
-		return
-	}
-	
-	// 3. 删除账号本身
-	var deletedAccounts int64
-	if len(accountIDs) > 0 {
-		accountResult := database.DB.Where("id IN ?", accountIDs).Delete(&model.Account{})
-		if accountResult.Error != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "删除账号失败: " + accountResult.Error.Error()})
-			return
+	// 同 DeleteCard，四步放进同一事务，避免部分成功
+	var deletedAccounts, deletedCards int64
+	if err := database.DB.Transaction(func(tx *gorm.DB) error {
+		// 1. 获取所有关联的账号 ID 列表
+		var accountIDs []uint
+		if err := tx.Model(&model.CardAccount{}).
+			Where("card_id IN ?", req.IDs).
+			Distinct().
+			Pluck("account_id", &accountIDs).Error; err != nil {
+			return fmt.Errorf("查询关联账号失败: %w", err)
 		}
-		deletedAccounts = accountResult.RowsAffected
-	}
-	
-	// 4. 删除卡密
-	result := database.DB.Where("id IN ?", req.IDs).Delete(&model.Card{})
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": result.Error.Error()})
+
+		// 2. 删除关联关系
+		if err := tx.Where("card_id IN ?", req.IDs).Delete(&model.CardAccount{}).Error; err != nil {
+			return fmt.Errorf("删除关联关系失败: %w", err)
+		}
+
+		// 3. 物理删除账号本身（走 Unscoped，否则只置 deleted_at 会留下幽灵数据）
+		if len(accountIDs) > 0 {
+			accountResult := deleteAccountsPhysicallyTx(tx, accountIDs)
+			if accountResult.Error != nil {
+				return fmt.Errorf("删除账号失败: %w", accountResult.Error)
+			}
+			deletedAccounts = accountResult.RowsAffected
+		}
+
+		// 4. 删除卡密
+		result := tx.Where("id IN ?", req.IDs).Delete(&model.Card{})
+		if result.Error != nil {
+			return result.Error
+		}
+		deletedCards = result.RowsAffected
+		return nil
+	}); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": err.Error()})
 		return
 	}
-	
-	logMsg := "批量删除卡密 " + strconv.Itoa(len(req.IDs)) + " 张，实际删除 " + strconv.FormatInt(result.RowsAffected, 10) + " 张"
+
+	logMsg := "批量删除卡密 " + strconv.Itoa(len(req.IDs)) + " 张，实际删除 " + strconv.FormatInt(deletedCards, 10) + " 张"
 	if deletedAccounts > 0 {
 		logMsg += fmt.Sprintf("，级联删除 %d 个账号", deletedAccounts)
 	}
 	AddOpLogWithCtx(c, "delete", logMsg, "admin")
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已删除", "data": gin.H{"deleted": result.RowsAffected}})
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已删除", "data": gin.H{"deleted": deletedCards, "deletedAccounts": deletedAccounts}})
 }
 
 func generateCode(charset string, length int, separator string, groupSize int) string {

@@ -646,6 +646,43 @@ func ClearAssignedAccounts(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已分配账号已清空", "data": gin.H{"deleted": result.RowsAffected}})
 }
 
+// POST /admin/accounts/purge-soft-deleted
+// Body: { "confirm": true }
+// 清理历史遗留的软删除账号（deleted_at IS NOT NULL）。
+// 这些行是早期删除卡密时漏掉 Unscoped 留下的：绑定关系已被删除，
+// 账号列表和库存统计都查不到它们，但一键清空会把它们计入删除数，
+// 导致「清除数量远大于显示库存」。
+// confirm 不为 true 时只返回待清理数量，不执行删除，便于先探查再决定。
+func PurgeSoftDeletedAccounts(c *gin.Context) {
+	var req struct {
+		Confirm bool `json:"confirm"`
+	}
+	// 允许空 body：此时按预览处理，不删除任何数据
+	_ = c.ShouldBindJSON(&req)
+
+	var pending int64
+	if err := database.DB.Unscoped().Model(&model.Account{}).
+		Where("deleted_at IS NOT NULL").
+		Count(&pending).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": err.Error()})
+		return
+	}
+
+	if !req.Confirm {
+		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "预览模式，未执行删除（传 confirm: true 执行）", "data": gin.H{"pending": pending, "deleted": 0}})
+		return
+	}
+
+	result := database.DB.Unscoped().Where("deleted_at IS NOT NULL").Delete(&model.Account{})
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": result.Error.Error()})
+		return
+	}
+
+	AddOpLogWithCtx(c, "clear", "清理软删除残留账号，共删除 "+strconv.FormatInt(result.RowsAffected, 10)+" 个", "admin")
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "软删除残留账号已清理", "data": gin.H{"pending": pending, "deleted": result.RowsAffected}})
+}
+
 // GET /admin/pool/stats
 func PoolStats(c *gin.Context) {
 	// 账号统计：单次 GROUP BY 查询替代多次 COUNT。

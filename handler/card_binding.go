@@ -91,9 +91,16 @@ func releaseAccountsForCards(cardIDs []uint) error {
 	return database.DB.Where("card_id IN ?", cardIDs).Delete(&model.CardAccount{}).Error
 }
 
-func deleteAccountsPhysically(accountIDs []uint) *gorm.DB {
+// deleteAccountsPhysicallyTx 在指定句柄（可以是事务）上物理删除账号。
+// Account 内嵌 gorm.Model 带 DeletedAt，必须 Unscoped，否则只是把 deleted_at 置值，
+// 行仍留在表里：列表和库存统计查不到，但 Unscoped 的一键清空会把它们计入删除数。
+func deleteAccountsPhysicallyTx(db *gorm.DB, accountIDs []uint) *gorm.DB {
 	if len(accountIDs) == 0 {
-		return database.DB.Where("1 = 0").Delete(&model.Account{})
+		return db.Where("1 = 0").Delete(&model.Account{})
 	}
-	return database.DB.Unscoped().Where("id IN ?", accountIDs).Delete(&model.Account{})
+	return db.Unscoped().Where("id IN ?", accountIDs).Delete(&model.Account{})
+}
+
+func deleteAccountsPhysically(accountIDs []uint) *gorm.DB {
+	return deleteAccountsPhysicallyTx(database.DB, accountIDs)
 }
