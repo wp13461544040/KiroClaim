@@ -36,6 +36,73 @@ async function copyAllFormatted() {
   }
 }
 
+// 从卡密复制模板里抽出兑换地址。
+// 模板是自由文本（如「兑换卡密：https://xxx.cn/redeem，尽快兑换」），
+// 所以只按 URL 合法字符集匹配，中文和中文标点天然被排除在地址之外；
+// 再剔掉结尾的句末标点（英文句号/逗号等本身是合法 URL 字符，但通常属于句子）。
+function extractRedeemUrl(template) {
+  if (!template) return '';
+  const matched = String(template).match(/https?:\/\/[A-Za-z0-9\-._~:\/?#\[\]@!$&'()*+,;=%]+/);
+  if (!matched) return '';
+  return matched[0].replace(/[.,;:!?)\]'"]+$/, '');
+}
+
+// 取兑换地址：优先用管理员配好的复制模板里的地址，
+// 取不到则用当前站点拼 /redeem（管理端与兑换页同源）。
+async function getRedeemUrl() {
+  try {
+    const r = await api('GET', '/admin/settings');
+    const url = extractRedeemUrl(r.code === 0 ? r.data?.cardCopyTemplate : '');
+    if (url) return url;
+  } catch (err) {
+    // 读设置失败不该阻塞复制，退回按当前站点拼
+  }
+  return window.location.origin + '/redeem';
+}
+
+// 闲鱼格式：每行一条「卡密 兑换地址」
+function buildXianyuText(codes, redeemUrl) {
+  return codes
+    .map(code => String(code == null ? '' : code).trim())
+    .filter(Boolean)
+    .map(code => code + ' ' + redeemUrl)
+    .join('\n');
+}
+
+// 生成结果弹窗里：把刚生成的卡密复制为闲鱼格式
+async function copyXianyuFormat() {
+  const el = document.getElementById('generatedCodes');
+  if (!el) return;
+  const redeemUrl = await getRedeemUrl();
+  const text = buildXianyuText(el.value.split('\n'), redeemUrl);
+  if (!text) {
+    showToast('没有可复制的卡密', 'info');
+    return;
+  }
+  copyToClipboard(text);
+}
+
+// 卡密列表里：把选中的卡密复制为闲鱼格式。
+// 选中状态跨分页保留，所以不能只读当前页 DOM，需要重新拉一次列表再按 ID 过滤。
+async function copySelectedAsXianyu() {
+  if (selectedCardIds.size === 0) {
+    showToast('请先选择要复制的卡密', 'info');
+    return;
+  }
+  const r = await api('GET', '/admin/cards?size=1000');
+  if (r.code !== 0 || !r.data?.list) {
+    showToast('读取卡密失败：' + (r.message || r.msg || '未知错误'), 'error');
+    return;
+  }
+  const codes = r.data.list.filter(c => selectedCardIds.has(c.ID)).map(c => c.Code);
+  if (codes.length === 0) {
+    showToast('没有可复制的卡密', 'info');
+    return;
+  }
+  const redeemUrl = await getRedeemUrl();
+  copyToClipboard(buildXianyuText(codes, redeemUrl));
+}
+
 function escapeHtml(value) {
   return String(value == null ? '' : value).replace(/[&<>"']/g, function(c) {
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
@@ -449,6 +516,7 @@ async function doGenerate() {
         <span style="font-size:13px;color:var(--text-muted)">生成成功，共 ${r.data?.codes?.length ?? count} 张：</span>
         <div style="display:flex;gap:6px">
           <button class="ui-btn ui-btn-secondary ui-btn-sm" onclick="copyToClipboard(document.getElementById('generatedCodes').value)">一键复制全部</button>
+          <button class="ui-btn ui-btn-secondary ui-btn-sm" onclick="copyXianyuFormat()" title="每行「卡密 兑换地址」">闲鱼格式</button>
           <button class="ui-btn ui-btn-primary ui-btn-sm" onclick="copyAllFormatted()">格式化复制全部</button>
         </div>
       </div>
@@ -560,6 +628,14 @@ function updateCardBatchBtn() {
   if (deleteBtn && deleteCount) {
     deleteCount.textContent = selectedCardIds.size;
     deleteBtn.style.display = selectedCardIds.size > 0 ? '' : 'none';
+  }
+
+  // 闲鱼格式复制：任何状态的卡密都可以复制，只要有选中就显示
+  const xianyuBtn = document.getElementById('copyXianyuCardsBtn');
+  const xianyuCount = document.getElementById('selectedCardCountXianyu');
+  if (xianyuBtn && xianyuCount) {
+    xianyuCount.textContent = selectedCardIds.size;
+    xianyuBtn.style.display = selectedCardIds.size > 0 ? '' : 'none';
   }
   
   if (healthBtn && healthCount) {

@@ -277,6 +277,7 @@
                   <div class="k-dropdown-item" onclick="exportCards('json', 'all')">JSON (全部)</div>
                 </div>
               </div>
+              <button class="ui-btn ui-btn-secondary ui-btn-sm" id="copyXianyuCardsBtn" style="display:none" onclick="copySelectedAsXianyu()" title="每行「卡密 兑换地址」">闲鱼格式 (<span id="selectedCardCountXianyu">0</span>)</button>
               <button class="ui-btn ui-btn-danger ui-btn-sm" id="batchDeleteCardsBtn" style="display:none" onclick="batchDeleteCards()">批量删除 (<span id="selectedCardCount">0</span>)</button>
               <button class="ui-btn ui-btn-sm" id="batchCheckHealthBtn" style="display:none;background:#10b981;color:#fff" onclick="batchCheckCardsHealth()">批量检测 (<span id="selectedCardCountHealth">0</span>)</button>
               <button class="ui-btn ui-btn-primary ui-btn-sm" onclick="showGenerateModal()">生成卡密</button>
@@ -742,7 +743,7 @@
   <script src="/static/js/api.js?v=0.2.5"></script>
   <script src="/static/js/dashboard.js?v=0.2.5"></script>
   <script src="/static/js/accounts.js?v=0.2.6"></script>
-  <script src="/static/js/cards.js?v=0.2.1-beta"></script>
+  <script src="/static/js/cards.js?v=0.2.2-beta"></script>
   <script src="/static/js/export.js?v=0.2.7"></script>
   <script src="/static/js/logs.js?v=0.2.4"></script>
   <script src="/static/js/settings.js?v=0.2.4"></script>
