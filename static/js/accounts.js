@@ -48,11 +48,18 @@ async function loadAccounts(page = 1) {
       ? `${creditUsed.toFixed(1)} / ${creditLimit.toFixed(0)}`
       : '-';
     const checked = selectedAccountIds.has(a.ID) ? 'checked' : '';
+    // 派发只取额度一点没动过的账号，所以用过额度的号即使留在账号池里也发不出去。
+    // 库存模式开启后这类账号会常驻池中，状态列显示「已使用」而不是「正常」，
+    // 否则容易误判为有货可发。
+    // 封禁优先级更高：封禁账号即使用过额度也要显示「已封禁」。
+    const statusCell = a.Status === 'suspended'
+      ? healthBadge('suspended')
+      : (creditUsed > 0 ? healthBadge('used') : healthBadge(a.Status));
     return `<tr>
       <td data-label="选择"><input type="checkbox" class="k-checkbox" ${checked} onchange="toggleAccountSelect(${a.ID}, this.checked)"></td>
       <td data-label="ID" style="color:#999">${a.ID}</td>
       <td data-label="邮箱" class="account-email-cell">${a.Email || '-'}</td>
-      <td data-label="健康状态">${healthBadge(a.Status)}</td>
+      <td data-label="健康状态">${statusCell}</td>
       <td data-label="订阅" class="account-subscription-cell">${subscriptionBadge(a.Subscription)}</td>
       <td data-label="额度用量" class="account-usage-cell">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--text-muted);max-width:160px">
@@ -939,6 +946,33 @@ async function cleanupUsedCreditAccounts() {
     }
   } else {
     showToast('清理失败：' + (r.message || r.msg || '未知错误'), 'error');
+  }
+}
+
+// 把历史上因用过额度被自动移入已使用的账号放回账号池。
+// 开启库存模式只影响之后的健康检查，不会追溯处理已有数据，所以需要手动补这一次。
+// 先做一次预览拿到数量，再让用户确认，避免盲改一批数据。
+async function restoreCreditUsedAccounts() {
+  const preview = await api('POST', '/admin/accounts/restore-credit-used', { confirm: false });
+  if (preview.code !== 0) {
+    showToast('查询失败：' + (preview.message || preview.msg || '未知错误'), 'error');
+    return;
+  }
+  const pending = preview.data?.pending || 0;
+  if (pending === 0) {
+    showToast('没有可放回的账号', 'info');
+    return;
+  }
+  if (!confirm(`将把 ${pending} 个账号放回账号池。\n\n只包含「用过额度但从未发给买家」的账号，已绑定卡密的不会被放回。\n\n确认继续？`)) return;
+
+  const r = await api('POST', '/admin/accounts/restore-credit-used', { confirm: true });
+  if (r.code === 0) {
+    showToast(`已放回 ${r.data?.restored || 0} 个账号`, 'success');
+    loadAccounts(1);
+    loadAccountFilterOptions();
+    loadStats && loadStats();
+  } else {
+    showToast('放回失败：' + (r.message || r.msg || '未知错误'), 'error');
   }
 }
 

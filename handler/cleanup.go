@@ -35,6 +35,13 @@ func CleanupUsedCreditAccountsManual() (int, error) {
 
 // CleanupUsedCreditAccountsAPI 手动清理的 HTTP 处理函数
 func CleanupUsedCreditAccountsAPI(c *gin.Context) {
+	// 库存模式的整个用意就是把用过额度的账号留在池里，
+	// 这个清理会一次性把它们全部推走，语义直接冲突，所以直接拒绝。
+	if inventoryModeEnabled() {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "库存模式已开启，额度已用账号会保留在账号池，无法执行清理。如需清理请先在设置中关闭库存模式"})
+		return
+	}
+
 	count, err := CleanupUsedCreditAccountsManual()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "清理失败: " + err.Error()})

@@ -19,6 +19,12 @@ import (
 )
 
 type AppSettings struct {
+	// RetainCreditExhaustedAccounts 即界面上的「库存模式」。
+	// 开启后健康检查只把已封禁的账号移入已使用，用过额度的账号继续留在账号池，
+	// 不再因为 credit_used > 0 就被自动移走。
+	// 这些账号留在池里只是可见、可管理，派发仍然只取额度一点没动过的账号。
+	RetainCreditExhaustedAccounts bool
+
 	MaxUpstreamCheckConcurrency int
 	DispatchHealthCheckEnabled  bool
 	HealthScanEnabled           bool
@@ -51,6 +57,9 @@ type AppSettings struct {
 }
 
 type storedRuntimeSettings struct {
+	// 指针 + omitempty：老配置里没有这个字段时保持默认关闭，无需数据迁移
+	RetainCreditExhaustedAccounts *bool `json:"retainCreditExhaustedAccounts,omitempty"`
+
 	MaxUpstreamCheckConcurrency *int    `json:"maxUpstreamCheckConcurrency,omitempty"`
 	MaxImportConcurrency        *int    `json:"maxImportConcurrency,omitempty"`
 	DispatchHealthCheckEnabled  *bool   `json:"dispatchHealthCheckEnabled,omitempty"`
@@ -92,6 +101,9 @@ var (
 func LoadSettingsFromEnv() {
 	logging := utils.DefaultLoggingConfigFromEnv()
 	s := AppSettings{
+		// 库存模式默认关闭，保持原有行为：用过额度的账号会被自动移入已使用
+		RetainCreditExhaustedAccounts: envBool("RETAIN_CREDIT_EXHAUSTED_ACCOUNTS", false),
+
 		MaxUpstreamCheckConcurrency: 6,
 		// 派发前不再逐个探测上游，账号状态由后台定时巡检维护。
 		DispatchHealthCheckEnabled: envBool("DISPATCH_HEALTH_CHECK_ENABLED", false),
@@ -153,6 +165,9 @@ func mergeStoredRuntimeSettings(s *AppSettings, stored storedRuntimeSettings) {
 		s.MaxUpstreamCheckConcurrency = *stored.MaxUpstreamCheckConcurrency
 	} else if stored.MaxImportConcurrency != nil {
 		s.MaxUpstreamCheckConcurrency = *stored.MaxImportConcurrency
+	}
+	if stored.RetainCreditExhaustedAccounts != nil {
+		s.RetainCreditExhaustedAccounts = *stored.RetainCreditExhaustedAccounts
 	}
 	if stored.DispatchHealthCheckEnabled != nil {
 		s.DispatchHealthCheckEnabled = *stored.DispatchHealthCheckEnabled
@@ -297,6 +312,8 @@ func stringPtr(v string) *string { return &v }
 
 func persistRuntimeSettings(s AppSettings) error {
 	payload := storedRuntimeSettings{
+		RetainCreditExhaustedAccounts: boolPtr(s.RetainCreditExhaustedAccounts),
+
 		MaxUpstreamCheckConcurrency: intPtr(s.MaxUpstreamCheckConcurrency),
 		DispatchHealthCheckEnabled:  boolPtr(s.DispatchHealthCheckEnabled),
 		HealthScanEnabled:           boolPtr(s.HealthScanEnabled),
@@ -407,6 +424,8 @@ func AdminSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
 		"data": gin.H{
+			"retainCreditExhaustedAccounts": s.RetainCreditExhaustedAccounts,
+
 			"maxUpstreamCheckConcurrency": s.MaxUpstreamCheckConcurrency,
 			"dispatchHealthCheckEnabled":  s.DispatchHealthCheckEnabled,
 			"healthScanEnabled":           s.HealthScanEnabled,
@@ -443,6 +462,8 @@ func AdminSettings(c *gin.Context) {
 
 func UpdateAdminSettings(c *gin.Context) {
 	var req struct {
+		RetainCreditExhaustedAccounts bool `json:"retainCreditExhaustedAccounts"`
+
 		MaxUpstreamCheckConcurrency int    `json:"maxUpstreamCheckConcurrency"`
 		DispatchHealthCheckEnabled  bool   `json:"dispatchHealthCheckEnabled"`
 		HealthScanEnabled           bool   `json:"healthScanEnabled"`
@@ -545,6 +566,7 @@ func UpdateAdminSettings(c *gin.Context) {
 	s := currentSettings
 	settingsMu.RUnlock()
 
+	s.RetainCreditExhaustedAccounts = req.RetainCreditExhaustedAccounts
 	s.MaxUpstreamCheckConcurrency = req.MaxUpstreamCheckConcurrency
 	s.DispatchHealthCheckEnabled = req.DispatchHealthCheckEnabled
 	s.HealthScanEnabled = req.HealthScanEnabled

@@ -247,8 +247,18 @@ func buildHealthUpdates(r healthResult, now time.Time) map[string]interface{} {
 		updates["credit_limit"] = r.creditLimit
 	}
 	
-	// 自动标记已使用：仅当实际使用过额度时标记（封禁状态不自动标记为已使用）
-	if r.creditUsed > 0 {
+	// 自动标记已使用，分两条规则：
+	//
+	// 1. 已封禁的账号无论哪种模式都移入已使用。它已经不可能再发货，
+	//    留在账号池只会干扰库存判断。
+	// 2. 用过额度的账号是否移走由「库存模式」决定：
+	//    关闭（默认）时移入已使用；开启时留在账号池，便于管理员自己判断怎么处置。
+	//    注意留在池里只是可见，派发仍然只取 credit_used = 0 的账号（见 popAccount），
+	//    所以不会把用过额度的号发给买家。
+	if r.status == model.AccountStatusSuspended {
+		updates["used"] = true
+		updates["used_at"] = now
+	} else if !inventoryModeEnabled() && r.creditUsed > 0 {
 		updates["used"] = true
 		updates["used_at"] = now
 	}

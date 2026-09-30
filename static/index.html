@@ -145,6 +145,7 @@
                 </div>
               </div>
               <button class="ui-btn ui-btn-danger ui-btn-sm" id="batchDeleteAccountsBtn" style="display:none" onclick="batchDeleteAccounts()">批量删除 (<span id="selectedAccountCount">0</span>)</button>
+              <button class="ui-btn ui-btn-secondary ui-btn-sm" onclick="restoreCreditUsedAccounts()" title="把历史上因用过额度被移入已使用、且从未发给买家的账号放回账号池">放回账号池</button>
               <button class="ui-btn ui-btn-warning ui-btn-sm" onclick="cleanupUsedCreditAccounts()">清理额度已用</button>
               <button class="ui-btn ui-btn-danger ui-btn-sm" onclick="deleteBannedAccounts()">清理封禁账号</button>
               <button class="ui-btn ui-btn-primary ui-btn-sm" onclick="showImportModal()">导入账号</button>
@@ -431,6 +432,13 @@
                     <small>关闭后发货只看数据库状态，速度快很多，依赖下方定时巡检保持状态新鲜</small>
                   </div>
                   <input type="checkbox" class="k-checkbox" id="settingDispatchHealthCheckEnabled">
+                </div>
+                <div class="settings-toggle-card">
+                  <div>
+                    <strong>库存模式</strong>
+                    <small>开启后只把已封禁账号移入已使用，用过额度的账号保留在账号池（仍不会发给买家）。只影响之后的检查，历史账号需到账号池手动放回</small>
+                  </div>
+                  <input type="checkbox" class="k-checkbox" id="settingRetainCreditExhaustedAccounts">
                 </div>
                 <div class="settings-toggle-card">
                   <div>
@@ -761,11 +769,11 @@
   <script src="/static/js/auth.js?v=0.2.4"></script>
   <script src="/static/js/api.js?v=0.2.5"></script>
   <script src="/static/js/dashboard.js?v=0.2.5"></script>
-  <script src="/static/js/accounts.js?v=0.2.6"></script>
+  <script src="/static/js/accounts.js?v=0.2.7"></script>
   <script src="/static/js/cards.js?v=0.2.3-beta"></script>
   <script src="/static/js/export.js?v=0.2.7"></script>
   <script src="/static/js/logs.js?v=0.2.4"></script>
-  <script src="/static/js/settings.js?v=0.2.4"></script>
+  <script src="/static/js/settings.js?v=0.2.5"></script>
   <script src="/static/js/commerce-admin-loader.js?v=0.2.4"></script>
   <script src="/static/js/version.js?v=0.2.4"></script>
   <script src="/static/js/main.js?v=0.2.4"></script>

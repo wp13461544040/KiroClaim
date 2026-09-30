@@ -304,6 +304,12 @@ func dispatchHealthCheckEnabled() bool {
 	return GetCurrentSettings().DispatchHealthCheckEnabled
 }
 
+// inventoryModeEnabled 即界面上的「库存模式」。
+// 开启后健康检查不再因为账号用过额度就把它移入已使用，只有封禁账号才移走。
+func inventoryModeEnabled() bool {
+	return GetCurrentSettings().RetainCreditExhaustedAccounts
+}
+
 func popAccount(excludeID uint, subscription string, emailSuffix string) (*model.Account, error) {
 	timer := prometheus.NewTimer(utils.DispatchDuration)
 	defer timer.ObserveDuration()

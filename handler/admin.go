@@ -584,8 +584,16 @@ func DeleteAccountsByStatus(c *gin.Context) {
 		return
 	}
 
-	// 刷新完成后，查询最新的封禁账号并删除（只删除未分配的）
-	result := database.DB.Unscoped().Where("status = ? AND used = ?", req.Status, false).Delete(&model.Account{})
+	// 刷新完成后，删除该状态下从未发给买家的账号。
+	//
+	// 这里用「有没有卡密绑定」而不是 used = false 来判断是否已分配：
+	// 封禁账号会被 buildHealthUpdates 标记成 used = true（无论是否开启库存模式），
+	// 若仍按 used = false 过滤，上面刚刷出来的封禁账号会一个都删不掉。
+	// 绑定关系才是「真的发给买家了」的可靠依据。
+	result := database.DB.Unscoped().
+		Where("status = ?", req.Status).
+		Where("id NOT IN (?)", database.DB.Model(&model.CardAccount{}).Select("account_id")).
+		Delete(&model.Account{})
 	if result.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": result.Error.Error()})
 		return
@@ -689,6 +697,65 @@ func PurgeSoftDeletedAccounts(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "软删除残留账号已清理", "data": gin.H{"pending": pending, "deleted": result.RowsAffected}})
 }
 
+// restoreCreditUsedAccountsQuery 圈定「因用过额度被自动移入已使用、但其实没发给任何人」的账号。
+//
+// 每个条件都是安全考量，不能省：
+//   - status = active：排除封禁账号；也排除 cleanup.go 写的 status = 'used'，
+//     那是管理员点「清理额度已用」主动推走的，属于明确意图，不该被自动拉回。
+//   - credit_used > 0：只回迁因额度被标记的，与 buildHealthUpdates 关闭库存模式时的口径一致。
+//   - 额度未耗尽：真正用满额度的账号回到池里也发不出去（isDispatchable 会挡），回迁没意义。
+//   - 没有 card_account 绑定：有绑定说明这个号真的发给买家了，绝对不能回池，否则会二次发货。
+//   - used_at 早于 cutoff：派发是先原子预留（写 used = true）再插绑定记录，中间有毫秒级间隙。
+//     不卡时间的话，可能把正在发货中的账号抢回池里。
+func restoreCreditUsedAccountsQuery(cutoff time.Time) *gorm.DB {
+	return database.DB.Model(&model.Account{}).
+		Where("used = ?", true).
+		Where("status = ?", model.AccountStatusActive).
+		Where("credit_used > ?", 0).
+		Where("credit_limit = 0 OR credit_used < credit_limit").
+		Where("used_at IS NOT NULL AND used_at < ?", cutoff).
+		Where("id NOT IN (?)", database.DB.Model(&model.CardAccount{}).Select("account_id"))
+}
+
+// POST /admin/accounts/restore-credit-used
+// Body: { "confirm": true }
+// 把历史上因为用过额度而被自动移入「已使用」的账号放回账号池。
+//
+// 开启库存模式只影响之后的健康检查，不会追溯处理已有数据，所以需要这个接口补一次。
+// 真正派发给买家的账号会被条件排除，不会被拉回来重复发货。
+// confirm 不为 true 时只返回待回迁数量，便于先探查再决定。
+func RestoreCreditUsedAccounts(c *gin.Context) {
+	var req struct {
+		Confirm bool `json:"confirm"`
+	}
+	// 允许空 body：此时按预览处理，不改动任何数据
+	_ = c.ShouldBindJSON(&req)
+
+	cutoff := time.Now().Add(-5 * time.Minute)
+
+	var pending int64
+	if err := restoreCreditUsedAccountsQuery(cutoff).Count(&pending).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "统计失败: " + err.Error()})
+		return
+	}
+
+	if !req.Confirm {
+		c.JSON(http.StatusOK, gin.H{"code": 0, "message": "预览模式，未改动数据（传 confirm: true 执行）", "data": gin.H{"pending": pending, "restored": 0}})
+		return
+	}
+
+	// 重新计算 cutoff 并重查，避免预览与执行之间隔得太久导致范围漂移
+	result := restoreCreditUsedAccountsQuery(time.Now().Add(-5*time.Minute)).
+		Updates(map[string]interface{}{"used": false, "used_at": nil})
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "回迁失败: " + result.Error.Error()})
+		return
+	}
+
+	AddOpLogWithCtx(c, "restore", "将额度已用账号放回账号池，共 "+strconv.FormatInt(result.RowsAffected, 10)+" 个", "admin")
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已放回账号池", "data": gin.H{"pending": pending, "restored": result.RowsAffected}})
+}
+
 // GET /admin/pool/stats
 func PoolStats(c *gin.Context) {
 	// 账号统计：单次 GROUP BY 查询替代多次 COUNT。
@@ -720,12 +787,17 @@ func PoolStats(c *gin.Context) {
 		}
 	}
 
-	// 可用账号 = 未分配 且 状态正常 且 额度未耗尽
-	// 额度未耗尽的判断：credit_limit = 0 (无限制) 或 credit_used < credit_limit (有剩余)
+	// 可用账号 = 真正能被派发出去的账号，条件与 popAccount 的候选查询保持一致：
+	// 未分配 且 状态正常 且 额度一点没动过 且 额度未耗尽。
+	//
+	// credit_used = 0 这条容易被忽略但必须有：派发只取从未用过额度的账号。
+	// 库存模式开启后用过额度的账号会留在账号池里，若这里不排除它们，
+	// 「可用库存」会明显虚高，运营看到有货、实际发不出来。
 	var available int64
 	database.DB.Model(&model.Account{}).
 		Where("used = ? AND status = ?",
 			false, model.AccountStatusActive).
+		Where("credit_used = ?", 0).
 		Where("credit_limit = 0 OR credit_used < credit_limit").
 		Count(&available)
 

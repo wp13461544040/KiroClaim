@@ -9,6 +9,7 @@ async function loadSettings() {
   var d = r.data;
   document.getElementById('settingMaxUpstreamCheckConcurrency').value = Number.isFinite(Number(d.maxUpstreamCheckConcurrency)) ? Number(d.maxUpstreamCheckConcurrency) : 6;
   document.getElementById('settingDispatchHealthCheckEnabled').checked = !!d.dispatchHealthCheckEnabled;
+  document.getElementById('settingRetainCreditExhaustedAccounts').checked = !!d.retainCreditExhaustedAccounts;
   document.getElementById('settingHealthScanEnabled').checked = d.healthScanEnabled !== false;
   document.getElementById('settingHealthScanIntervalMinutes').value = Number.isFinite(Number(d.healthScanIntervalMinutes)) ? Number(d.healthScanIntervalMinutes) : 30;
   document.getElementById('settingHealthScanBatchSize').value = Number.isFinite(Number(d.healthScanBatchSize)) ? Number(d.healthScanBatchSize) : 1000;
@@ -145,6 +146,7 @@ async function saveSettings() {
   var body = {
     maxUpstreamCheckConcurrency: readIntSetting('settingMaxUpstreamCheckConcurrency', 6),
     dispatchHealthCheckEnabled: document.getElementById('settingDispatchHealthCheckEnabled').checked,
+    retainCreditExhaustedAccounts: document.getElementById('settingRetainCreditExhaustedAccounts').checked,
     healthScanEnabled: document.getElementById('settingHealthScanEnabled').checked,
     healthScanIntervalMinutes: readIntSetting('settingHealthScanIntervalMinutes', 30),
     healthScanBatchSize: readIntSetting('settingHealthScanBatchSize', 1000),
@@ -254,7 +256,7 @@ function initSettingsCategories() {
   var commerceMount=document.getElementById('commerceSettingsMount');
   if(!body||!source||!channelsMount||!commerceMount||!document.getElementById('settingsForm')) { return false; }
   var host=document.createElement('div'); host.id='settingsCategoryHost'; body.insertBefore(host,source);
-  createSettingsPane(host,'base',['settingMaxUpstreamCheckConcurrency','settingDispatchHealthCheckEnabled','settingHealthScanEnabled','settingHealthScanIntervalMinutes','settingHealthScanBatchSize','settingHealthScanQuietStartHour','settingHealthScanQuietEndHour','settingOpenApiEnabled','settingRequestTimeoutSeconds','settingMinResponseMs','settingRateLimitEnabled','settingRateLimitPerMin','settingLoginFailLimit','settingLoginLockMinutes','settingCaptchaEnabled','settingCaptchaSiteKey','settingCaptchaSecretKey','settingCaptchaFreeCount','settingCustomerServiceWechat','settingAnnouncementText','settingCardCopyTemplate']);
+  createSettingsPane(host,'base',['settingMaxUpstreamCheckConcurrency','settingDispatchHealthCheckEnabled','settingRetainCreditExhaustedAccounts','settingHealthScanEnabled','settingHealthScanIntervalMinutes','settingHealthScanBatchSize','settingHealthScanQuietStartHour','settingHealthScanQuietEndHour','settingOpenApiEnabled','settingRequestTimeoutSeconds','settingMinResponseMs','settingRateLimitEnabled','settingRateLimitPerMin','settingLoginFailLimit','settingLoginLockMinutes','settingCaptchaEnabled','settingCaptchaSiteKey','settingCaptchaSecretKey','settingCaptchaFreeCount','settingCustomerServiceWechat','settingAnnouncementText','settingCardCopyTemplate']);
   createSettingsPane(host,'logging',['settingLogFileEnabled','settingLogFilePath','settingLogMaxSizeMB','settingLogMaxBackups','settingLogMaxAgeDays','settingLogCompress','settingAutoUpdateEnabled']);
   var commercePane=createSettingsPane(host,'commerce',['setEnabled','setDefaultExpiry','setManualExpiry']); commercePane.appendChild(channelsMount);
   var deliveryPane=createSettingsPane(host,'delivery',['setStorageType','setLocalPath','setMaxProof','setS3Endpoint','setS3Region','setS3Bucket','setS3Access','setS3Secret','setS3SSL']);
