@@ -177,6 +177,14 @@
                   <div class="k-dropdown-item selected" onclick="selectAccountSubscription('', '全部订阅')">全部订阅</div>
                 </div>
               </div>
+              <div class="k-dropdown" id="accountEmailSuffixDropdown">
+                <div class="k-dropdown-trigger" onclick="toggleDropdown('accountEmailSuffixDropdown')">
+                  <span id="accountEmailSuffixText">全部后缀</span>
+                </div>
+                <div class="k-dropdown-menu">
+                  <div class="k-dropdown-item selected" onclick="selectAccountEmailSuffix('', '全部后缀')">全部后缀</div>
+                </div>
+              </div>
               <button class="ui-btn ui-btn-secondary ui-btn-sm" onclick="resetAccountFilters()">重置</button>
             </div>
             <div class="pagination" id="accountsPagination"></div>
@@ -708,6 +716,17 @@
               </div>
             </div>
           </div>
+          <div>
+            <label style="display:block; margin-bottom: 8px; font-size:13px">优先邮箱后缀<span style="color:var(--text-muted);font-weight:normal"> (可选)</span></label>
+            <div class="k-dropdown" id="genEmailSuffixDropdown" style="width:100%">
+              <div class="k-dropdown-trigger" onclick="toggleDropdown('genEmailSuffixDropdown')">
+                <span id="genEmailSuffixText">不限后缀</span>
+              </div>
+              <div class="k-dropdown-menu">
+                <div class="k-dropdown-item selected" data-suffix="" data-label="不限后缀" onclick="selectGenEmailSuffix('', '不限后缀')">不限后缀</div>
+              </div>
+            </div>
+          </div>
         </div>
         <div id="genModeHint" style="padding:12px; background:#fafafa; border-radius:4px; font-size:13px; color:var(--text-muted); margin-bottom:24px"></div>
 
@@ -743,7 +762,7 @@
   <script src="/static/js/api.js?v=0.2.5"></script>
   <script src="/static/js/dashboard.js?v=0.2.5"></script>
   <script src="/static/js/accounts.js?v=0.2.6"></script>
-  <script src="/static/js/cards.js?v=0.2.2-beta"></script>
+  <script src="/static/js/cards.js?v=0.2.3-beta"></script>
   <script src="/static/js/export.js?v=0.2.7"></script>
   <script src="/static/js/logs.js?v=0.2.4"></script>
   <script src="/static/js/settings.js?v=0.2.4"></script>

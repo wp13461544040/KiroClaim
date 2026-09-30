@@ -89,6 +89,11 @@ type Card struct {
 	AccountCount int    `gorm:"default:1"`
 	Subscription string `gorm:"type:varchar(50);default:''"`
 	Remark       string `gorm:"type:varchar(500);default:''"`
+	// EmailSuffix 是派发账号时优先选用的邮箱后缀（不含 @，例如 gmail.com）。
+	// 这是软偏好而非硬性要求：后缀内的账号不够时会自动用其他后缀补齐。
+	// 空串表示不限后缀，老卡密升级后天然是空串，行为与改动前一致。
+	// 仅供管理端内部使用，不会下发给兑换用户。
+	EmailSuffix string `gorm:"type:varchar(100);default:''"`
 }
 
 type CardAccount struct {

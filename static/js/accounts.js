@@ -3,6 +3,7 @@
 // 筛选状态（账号池仅显示未分配）
 let accountStatusFilter = '';
 let accountSubscriptionFilter = '';
+let accountEmailSuffixFilter = '';
 let accountKeyword = '';
 
 // 批量选择
@@ -23,6 +24,7 @@ async function loadAccounts(page = 1) {
   let url = `/admin/accounts?page=${page}&size=${size}&used=false`;
   if (accountStatusFilter) url += `&status=${accountStatusFilter}`;
   if (accountSubscriptionFilter) url += `&subscription=${encodeURIComponent(accountSubscriptionFilter)}`;
+  if (accountEmailSuffixFilter) url += `&email_suffix=${encodeURIComponent(accountEmailSuffixFilter)}`;
   if (accountCreditExhaustedFilter) url += '&credit_exhausted=true';
   if (accountKeyword) url += `&keyword=${encodeURIComponent(accountKeyword)}`;
   if (createdFrom) url += `&created_from=${createdFrom}`;
@@ -95,7 +97,7 @@ async function deleteAccount(id, source) {
     setTimeout(() => {
       if (source === 'assigned') loadAssignedAccounts(1);
       else loadAccounts(1);
-      loadAccountSubscriptionFilter();
+      loadAccountFilterOptions();
       loadStats && loadStats();
     }, 500);
   } else {
@@ -131,7 +133,7 @@ async function refreshAccount(id, source, btn) {
     } else {
       loadAccounts(1);
     }
-    loadAccountSubscriptionFilter();
+    loadAccountFilterOptions();
     loadStats && loadStats();
   } catch (e) {
     showToast('刷新失败：' + e.message, 'error');
@@ -628,7 +630,7 @@ async function doImport(btn) {
     if (agg.imported > 0) {
       document.getElementById('importJson').value = '';
       loadAccounts(1);
-      loadAccountSubscriptionFilter();
+      loadAccountFilterOptions();
       showToast(`成功导入 ${agg.imported} 个账号`, 'success');
     } else {
       showToast('没有新账号被导入', 'info');
@@ -713,7 +715,7 @@ function pollImportStatus(taskId, total, resultEl, btn) {
 
     if (d.imported > 0) {
       loadAccounts(1);
-      loadAccountSubscriptionFilter();
+      loadAccountFilterOptions();
       showToast(`成功导入 ${d.imported} 个账号`, 'success');
     }
   }).catch((e) => {
@@ -774,10 +776,49 @@ function selectAccountSubscription(value, text) {
   loadAccounts(1);
 }
 
+// 邮箱后缀筛选
+function selectAccountEmailSuffix(value, text) {
+  accountEmailSuffixFilter = value;
+  document.getElementById('accountEmailSuffixText').textContent = text;
+
+  document.querySelectorAll('#accountEmailSuffixDropdown .k-dropdown-item').forEach(item => {
+    item.classList.remove('selected');
+  });
+  event.target.classList.add('selected');
+
+  toggleDropdown('accountEmailSuffixDropdown');
+  loadAccounts(1);
+}
+
+// 按数据库中实际存在的邮箱后缀动态填充后缀下拉
+async function loadAccountEmailSuffixFilter() {
+  const r = await api('GET', '/admin/accounts/email-suffix-stats');
+  if (r.code !== 0 || !Array.isArray(r.data)) return;
+
+  const menu = document.querySelector('#accountEmailSuffixDropdown .k-dropdown-menu');
+  if (!menu) return;
+
+  const items = ['<div class="k-dropdown-item ' + (accountEmailSuffixFilter ? '' : 'selected') +
+    '" onclick="selectAccountEmailSuffix(\'\', \'全部后缀\')">全部后缀</div>'];
+  r.data.forEach(function(it) {
+    const value = it.suffix || '';
+    if (!value) return;
+    const selected = accountEmailSuffixFilter === value ? 'selected' : '';
+    const label = '@' + value;
+    items.push(
+      '<div class="k-dropdown-item ' + selected + '" ' +
+      'onclick=\'selectAccountEmailSuffix(' + JSON.stringify(value) + ', ' + JSON.stringify(label) + ')\'>' +
+      escapeHtml(label) + ' <span style="color:#999;font-size:12px">(' + it.unusedCount + ')</span></div>'
+    );
+  });
+  menu.innerHTML = items.join('');
+}
+
 // 重置账号筛选
 function resetAccountFilters() {
   accountStatusFilter = '';
   accountSubscriptionFilter = '';
+  accountEmailSuffixFilter = '';
   accountCreditExhaustedFilter = '';
   accountKeyword = '';
 
@@ -790,12 +831,15 @@ function resetAccountFilters() {
 
   document.getElementById('accountStatusText').textContent = '全部状态';
   document.getElementById('accountSubscriptionText').textContent = '全部订阅';
+  const emailSuffixText = document.getElementById('accountEmailSuffixText');
+  if (emailSuffixText) emailSuffixText.textContent = '全部后缀';
 
-  document.querySelectorAll('#accountStatusDropdown .k-dropdown-item, #accountSubscriptionDropdown .k-dropdown-item').forEach(item => {
+  document.querySelectorAll('#accountStatusDropdown .k-dropdown-item, #accountSubscriptionDropdown .k-dropdown-item, #accountEmailSuffixDropdown .k-dropdown-item').forEach(item => {
     item.classList.remove('selected');
   });
   document.querySelector('#accountStatusDropdown .k-dropdown-item:first-child')?.classList.add('selected');
   document.querySelector('#accountSubscriptionDropdown .k-dropdown-item:first-child')?.classList.add('selected');
+  document.querySelector('#accountEmailSuffixDropdown .k-dropdown-item:first-child')?.classList.add('selected');
 
   loadAccounts(1);
 }
@@ -854,7 +898,7 @@ async function batchDeleteAccounts() {
     const selectAll = document.getElementById('selectAllAccounts');
     if (selectAll) selectAll.checked = false;
     loadAccounts(1);
-    loadAccountSubscriptionFilter();
+    loadAccountFilterOptions();
     loadStats();
   } else {
     showToast('批量删除失败：' + (r.message || r.msg || '未知错误'), 'error');
@@ -871,7 +915,7 @@ async function deleteBannedAccounts() {
   if (r.code === 0) {
     showToast(`已清理 ${r.data?.deleted || 0} 个封禁账号`, 'success');
     loadAccounts(1);
-    loadAccountSubscriptionFilter();
+    loadAccountFilterOptions();
     loadStats();
   } else {
     showToast('清理失败：' + (r.message || r.msg || '未知错误'), 'error');
@@ -888,7 +932,7 @@ async function cleanupUsedCreditAccounts() {
     if (cleaned > 0) {
       showToast(`已清理 ${cleaned} 个额度已用账号`, 'success');
       loadAccounts(1);
-      loadAccountSubscriptionFilter();
+      loadAccountFilterOptions();
       loadStats();
     } else {
       showToast('没有需要清理的账号', 'info');
@@ -913,11 +957,19 @@ async function doClearAllAccounts() {
     selectedAccountIds.clear();
     updateAccountBatchBtn();
     loadAccounts(1);
-    loadAccountSubscriptionFilter();
+    loadAccountFilterOptions();
     loadStats && loadStats();
   } else {
     showToast('清空失败：' + (r.message || r.msg || '未知错误'), 'error');
   }
+}
+
+// 统一刷新账号池的动态筛选选项。
+// 订阅和邮箱后缀的选项都来自真实数据，账号增删导入后都要一起重算，
+// 用一个入口收口，避免新增筛选时漏掉某个刷新时机。
+function loadAccountFilterOptions() {
+  loadAccountSubscriptionFilter();
+  loadAccountEmailSuffixFilter();
 }
 
 // 按数据库中实际存在的订阅动态填充账号订阅下拉

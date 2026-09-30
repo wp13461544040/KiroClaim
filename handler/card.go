@@ -21,6 +21,9 @@ import (
 	"gorm.io/gorm"
 )
 
+// cardListItem 是管理端卡密列表的字段白名单，只挂在需要鉴权的 admin 路由下。
+// 兑换接口走 buildTokenEntry / buildAccountResp 另外构造响应，不会复用这个结构，
+// 所以 EmailSuffix 这类内部字段不会下发给兑换用户。
 type cardListItem struct {
 	ID                 uint
 	CreatedAt          time.Time
@@ -29,6 +32,7 @@ type cardListItem struct {
 	UsedAt             *time.Time
 	AccountCount       int
 	Subscription       string
+	EmailSuffix        string
 	Status             string
 	Remark             string
 	ShopListed         bool
@@ -49,6 +53,7 @@ func buildCardListItem(card model.Card) cardListItem {
 		UsedAt:       card.UsedAt,
 		AccountCount: card.AccountCount,
 		Subscription: card.Subscription,
+		EmailSuffix:  card.EmailSuffix,
 		Status:       cardStatusFromUsedAt(card.UsedAt),
 		Remark:       card.Remark,
 	}
@@ -58,6 +63,7 @@ func GenerateCards(c *gin.Context) {
 	var req struct {
 		Count        int    `json:"count" binding:"required,min=1,max=500"`
 		Subscription string `json:"subscription"`
+		EmailSuffix  string `json:"email_suffix"`
 		AccountCount int    `json:"account_count" binding:"required,min=1"`
 		ListOnShop   bool   `json:"list_on_shop"`
 		Price        int64  `json:"price"`
@@ -82,6 +88,19 @@ func GenerateCards(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "账号订阅不存在"})
 		return
 	}
+
+	// 邮箱后缀偏好允许留空（不限后缀）。填了就必须是合法域名格式，
+	// 否则会被 normalizeEmailSuffix 归一化成空串、偏好静默失效，事后很难排查。
+	// 这里刻意不校验该后缀当前是否还有账号：偏好是软的，后缀账号用完时会回退到
+	// 其他后缀，不该因此挡住生成卡密。
+	emailSuffix := ""
+	if strings.TrimSpace(req.EmailSuffix) != "" {
+		emailSuffix = normalizeEmailSuffix(req.EmailSuffix)
+		if emailSuffix == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "邮箱后缀格式不正确，只允许字母、数字、点和连字符"})
+			return
+		}
+	}
 	if req.ListOnShop && req.Price < 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "商城售价不能小于 0"})
 		return
@@ -104,7 +123,7 @@ func GenerateCards(c *gin.Context) {
 		}
 		for i := 0; i < req.Count; i++ {
 			code := "KIRO-" + generateCode("upper", 12, "-", 4)
-			card := model.Card{Code: code, AccountCount: req.AccountCount, Subscription: subscription}
+			card := model.Card{Code: code, AccountCount: req.AccountCount, Subscription: subscription, EmailSuffix: emailSuffix}
 			if err := tx.Create(&card).Error; err != nil {
 				return err
 			}
@@ -123,7 +142,11 @@ func GenerateCards(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "生成成功", "data": gin.H{"codes": codes, "count": len(codes), "shopListed": req.ListOnShop, "productId": product.ID}})
-	AddOpLogWithCtx(c, "generate", "生成卡密 "+strconv.Itoa(len(codes))+" 张", "admin")
+	logMsg := "生成卡密 " + strconv.Itoa(len(codes)) + " 张"
+	if emailSuffix != "" {
+		logMsg += "，优先邮箱后缀 @" + emailSuffix
+	}
+	AddOpLogWithCtx(c, "generate", logMsg, "admin")
 }
 
 func validateCommerceProductImage(value string) error {

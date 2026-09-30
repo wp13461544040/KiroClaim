@@ -80,7 +80,7 @@ func TestDeliveryWithoutHealthCheckSelectsOldestDatabaseEligibleAccount(t *testi
 		CreditUsed:   1,
 	})
 
-	got, err := popAccount(0, "KIRO FREE")
+	got, err := popAccount(0, "KIRO FREE", "")
 	if err != nil {
 		t.Fatalf("pop account: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestDeliveryWithoutHealthCheckSelectsMultipleMatchingAccounts(t *testing.T)
 		Subscription: "KIRO FREE",
 	})
 
-	got, err := popMultipleAccounts(2, "KIRO PRO")
+	got, err := popMultipleAccounts(2, "KIRO PRO", "")
 	if err != nil {
 		t.Fatalf("pop multiple accounts: %v", err)
 	}

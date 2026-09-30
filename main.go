@@ -128,6 +128,7 @@ func main() {
 		admin.GET("/accounts", handler.ListAccounts)
 		admin.GET("/accounts/export", handler.ExportAccounts)
 		admin.GET("/accounts/subscription-stats", handler.AccountSubscriptionStats)
+		admin.GET("/accounts/email-suffix-stats", handler.AccountEmailSuffixStats)
 		admin.GET("/accounts/:id/detail", handler.AccountDetail)
 		admin.GET("/accounts/:id/models", handler.AccountModels)
 		admin.POST("/accounts/:id/refresh", handler.RefreshAccount)

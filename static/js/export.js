@@ -95,6 +95,7 @@ async function exportAccounts(format, exportType) {
   } else {
     if (accountStatusFilter) url += '&status=' + accountStatusFilter;
     if (accountSubscriptionFilter) url += '&subscription=' + encodeURIComponent(accountSubscriptionFilter);
+    if (accountEmailSuffixFilter) url += '&email_suffix=' + encodeURIComponent(accountEmailSuffixFilter);
     if (accountKeyword) url += '&keyword=' + encodeURIComponent(accountKeyword);
   }
 
@@ -246,6 +247,7 @@ async function doExportCustom() {
     var url = '/admin/accounts?used=false&page=1&size=' + count;
     if (accountStatusFilter) url += '&status=' + accountStatusFilter;
     if (accountSubscriptionFilter) url += '&subscription=' + encodeURIComponent(accountSubscriptionFilter);
+    if (accountEmailSuffixFilter) url += '&email_suffix=' + encodeURIComponent(accountEmailSuffixFilter);
     if (accountKeyword) url += '&keyword=' + encodeURIComponent(accountKeyword);
     
     // 获取账号列表

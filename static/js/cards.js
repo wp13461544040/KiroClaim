@@ -7,6 +7,8 @@ let cardShopStatusFilter = '';
 let cardShopGroupFilter = '';
 let cardShopPriceGroups = [];
 let genSubscription = '';
+// 生成卡密时的优先邮箱后缀，空串表示不限（与老卡密行为一致）
+let genEmailSuffix = '';
 let genShopImageData = '';
 let selectedCardIds = new Set();
 
@@ -177,6 +179,10 @@ async function loadCards(page = 1) {
     const checked = selectedCardIds.has(c.ID) ? 'checked' : '';
     const multiLabel = c.AccountCount > 1 ? `<span class="k-badge" style="background:#eff6ff;color:#1d4ed8">${c.AccountCount}号</span>` : '';
     const subscription = cardSubscriptionLabel(c.Subscription || '');
+    // 优先邮箱后缀属于管理端内部信息，兑换页不会拿到这个字段
+    const suffixLabel = c.EmailSuffix
+      ? `<span class="k-badge" style="background:#f5f3ff;color:#6d28d9" title="优先使用该后缀的账号，不足时用其他后缀补齐">@${escapeHtml(c.EmailSuffix)}</span>`
+      : '';
     const status = c.Status || (c.UsedAt ? 'active' : 'unused');
     const createdAt = c.CreatedAt ? new Date(c.CreatedAt).toLocaleString('zh-CN', {hour12: false}) : '-';
     const usedAt = c.UsedAt ? new Date(c.UsedAt).toLocaleString('zh-CN', {hour12: false}) : '-';
@@ -186,7 +192,7 @@ async function loadCards(page = 1) {
       <td data-label="选择"><input type="checkbox" class="k-checkbox" ${checked} onchange="toggleCardSelect(${c.ID}, this.checked)"></td>
       <td data-label="ID">${c.ID}</td>
       <td data-label="序列号"><code style="background:#f1f1f1;padding:2px 4px;white-space:nowrap">${escapeHtml(c.Code)}</code></td>
-      <td data-label="账号订阅" style="font-size:12px;white-space:nowrap">${escapeHtml(subscription)} ${multiLabel}</td>
+      <td data-label="账号订阅" style="font-size:12px;white-space:nowrap">${escapeHtml(subscription)} ${multiLabel} ${suffixLabel}</td>
       <td data-label="状态">${cardStatusBadge(status)}</td>
       <td data-label="创建时间" style="font-size:12px;color:#666;white-space:nowrap">${createdAt}</td>
       <td data-label="提取时间" style="font-size:12px;color:#666;white-space:nowrap">${usedAt}</td>
@@ -341,6 +347,60 @@ function selectGenSubscription(value, text) {
   updateModeHint();
 }
 
+// 选择优先邮箱后缀。与订阅不同，这里允许选空值（不限后缀）。
+function selectGenEmailSuffix(value, text) {
+  genEmailSuffix = String(value || '').trim();
+  const label = document.getElementById('genEmailSuffixText');
+  if (label) label.textContent = text || (genEmailSuffix ? '@' + genEmailSuffix : '不限后缀');
+  document.querySelectorAll('#genEmailSuffixDropdown .k-dropdown-item').forEach(function(item) {
+    item.classList.toggle('selected', (item.getAttribute('data-suffix') || '') === genEmailSuffix);
+  });
+  toggleDropdown('genEmailSuffixDropdown');
+  updateModeHint();
+}
+
+// 按账号表里真实存在的后缀填充下拉，附带可用数量，避免选到已经没号的后缀。
+// 后缀是软偏好，所以始终保留「不限后缀」选项且默认选中。
+async function loadCardEmailSuffixStats() {
+  const dropdown = document.getElementById('genEmailSuffixDropdown');
+  if (!dropdown) return;
+  const menu = dropdown.querySelector('.k-dropdown-menu');
+  const text = document.getElementById('genEmailSuffixText');
+
+  // 每次打开弹窗都重置为不限，避免沿用上一次的选择造成误发
+  genEmailSuffix = '';
+  if (text) text.textContent = '不限后缀';
+
+  const unlimited = '<div class="k-dropdown-item selected" data-suffix="" data-label="不限后缀">不限后缀</div>';
+  let items = [unlimited];
+  try {
+    const r = await api('GET', '/admin/accounts/email-suffix-stats');
+    if (r.code === 0 && Array.isArray(r.data)) {
+      r.data.forEach(function(it) {
+        const suffix = String(it.suffix || '').trim();
+        if (!suffix) return;
+        const label = '@' + suffix;
+        const unusedCount = it.unusedCount || 0;
+        const countColor = unusedCount > 0 ? '#999' : '#dc2626';
+        items.push('<div class="k-dropdown-item" data-suffix="' + escapeAttr(suffix) + '" data-label="' + escapeAttr(label) + '">' +
+          escapeHtml(label) + ' <span style="color:' + countColor + ';font-size:12px">(' + unusedCount + ' 可用)</span></div>');
+      });
+    }
+  } catch (err) {
+    // 统计失败不该挡住生成卡密，退化成只能选「不限后缀」
+    items = [unlimited];
+  }
+
+  if (menu) {
+    menu.innerHTML = items.join('');
+    menu.querySelectorAll('.k-dropdown-item').forEach(function(item) {
+      item.addEventListener('click', function() {
+        selectGenEmailSuffix(this.getAttribute('data-suffix') || '', this.getAttribute('data-label') || '');
+      });
+    });
+  }
+}
+
 function getGenAccountCount(normalizeInput) {
   const input = document.getElementById('genAccountCount');
   let count = parseInt(input?.value, 10);
@@ -356,12 +416,15 @@ function updateModeHint() {
   if (!hint) return;
   const accountText = `每张绑定 ${accountCount} 个账号`;
   const subscriptionText = genSubscription ? cardSubscriptionLabel(genSubscription) : '请先选择账号订阅';
-  hint.textContent = `将生成 ${count} 张卡密，${accountText}，账号订阅：${subscriptionText}。`;
+  const suffixText = genEmailSuffix
+    ? `，优先使用 @${genEmailSuffix} 的账号（不足时用其他后缀补齐）`
+    : '';
+  hint.textContent = `将生成 ${count} 张卡密，${accountText}，账号订阅：${subscriptionText}${suffixText}。`;
 }
 
 async function showGenerateModal() {
   document.getElementById('generateModal').classList.add('active');
-  await loadCardSubscriptionStats();
+  await Promise.all([loadCardSubscriptionStats(), loadCardEmailSuffixStats()]);
   updateModeHint();
 }
 
@@ -506,6 +569,7 @@ async function doGenerate() {
     count,
     account_count: accountCount,
     subscription: genSubscription,
+    email_suffix: genEmailSuffix,
     list_on_shop: listOnShop,
     price: listOnShop ? shopPrice : 0,
     image_data: listOnShop ? genShopImageData : ''

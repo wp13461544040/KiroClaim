@@ -403,6 +403,7 @@ func ListAccounts(c *gin.Context) {
 	creditExhausted := c.Query("credit_exhausted") // 新增：筛选额度已耗尽的账号
 	keyword := c.Query("keyword")
 	subscriptionFilter := c.Query("subscription")
+	emailSuffixFilter := normalizeEmailSuffix(c.Query("email_suffix"))
 	createdFrom := c.Query("created_from")
 	createdTo := c.Query("created_to")
 	if page < 1 {
@@ -456,6 +457,11 @@ func ListAccounts(c *gin.Context) {
 	// 按订阅筛选。
 	if subscriptionFilter != "" {
 		q = q.Where("subscription = ?", subscriptionFilter)
+	}
+	// 按邮箱后缀筛选。normalizeEmailSuffix 已把输入限定为域名合法字符，
+	// 非法输入会归一化成空串而被忽略，不会让通配符漏进 LIKE。
+	if emailSuffixFilter != "" {
+		q = q.Where("LOWER(email) LIKE ?", "%@"+emailSuffixFilter)
 	}
 	// 按关键词搜索邮箱。
 	if keyword != "" {
@@ -835,6 +841,44 @@ func AccountSubscriptionStats(c *gin.Context) {
 			return stats[i].TotalCount > stats[j].TotalCount
 		}
 		return stats[i].Subscription < stats[j].Subscription
+	})
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "data": stats})
+}
+
+// GET /admin/accounts/email-suffix-stats
+// 基于账号表里真实存在的邮箱后缀动态聚合，用于账号池筛选和生成卡密时选择优先后缀。
+// SUBSTR 与 INSTR 在 SQLite 和 MySQL 下都可用，不必按驱动分别写 SQL。
+func AccountEmailSuffixStats(c *gin.Context) {
+	type EmailSuffixStat struct {
+		Suffix      string `json:"suffix"`
+		UnusedCount int64  `json:"unusedCount"`
+		TotalCount  int64  `json:"totalCount"`
+	}
+
+	// 交由数据库做 GROUP BY 聚合，避免把全表邮箱读进内存再切分。
+	// unused_count 的口径与 PoolStats 的「可用」保持一致：未分配 + 状态正常 + 额度未耗尽。
+	stats := make([]EmailSuffixStat, 0, 8)
+	if err := database.DB.Model(&model.Account{}).
+		Select("LOWER(SUBSTR(email, INSTR(email, '@') + 1)) AS suffix, COUNT(*) AS total_count, "+
+			"SUM(CASE WHEN used = ? AND status = ? AND (credit_limit = 0 OR credit_used < credit_limit) THEN 1 ELSE 0 END) AS unused_count",
+			false, model.AccountStatusActive).
+		Where("email LIKE ?", "%@%").
+		Group("suffix").
+		Scan(&stats).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "统计失败: " + err.Error()})
+		return
+	}
+
+	// 可用数多的排前面，方便生成卡密时直接挑有货的后缀。
+	sort.SliceStable(stats, func(i, j int) bool {
+		if stats[i].UnusedCount != stats[j].UnusedCount {
+			return stats[i].UnusedCount > stats[j].UnusedCount
+		}
+		if stats[i].TotalCount != stats[j].TotalCount {
+			return stats[i].TotalCount > stats[j].TotalCount
+		}
+		return stats[i].Suffix < stats[j].Suffix
 	})
 
 	c.JSON(http.StatusOK, gin.H{"code": 0, "data": stats})

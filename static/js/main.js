@@ -107,8 +107,8 @@ function initApp() {
   if (genAccountCount) genAccountCount.addEventListener('input', updateModeHint);
   if (genCount || genAccountCount) updateModeHint();
 
-  // 按数据库中的实际订阅动态填充账号订阅筛选
-  if (typeof loadAccountSubscriptionFilter === 'function') loadAccountSubscriptionFilter();
+  // 按数据库中的实际数据动态填充账号池的订阅与邮箱后缀筛选
+  if (typeof loadAccountFilterOptions === 'function') loadAccountFilterOptions();
 }
 
 // 页面加载时检查认证状态

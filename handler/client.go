@@ -3,6 +3,7 @@
 import (
 	"log"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -108,7 +109,7 @@ func Activate(c *gin.Context) {
 
 	now := time.Now()
 	if card.AccountCount > 1 {
-		accounts, err := popMultipleAccounts(card.AccountCount, card.Subscription)
+		accounts, err := popMultipleAccounts(card.AccountCount, card.Subscription, card.EmailSuffix)
 		if err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"code": 2, "message": "账号不足，请联系管理员补充"})
 			return
@@ -155,7 +156,7 @@ func Activate(c *gin.Context) {
 		return
 	}
 
-	account, err := popAccount(0, card.Subscription)
+	account, err := popAccount(0, card.Subscription, card.EmailSuffix)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"code": 2, "message": "剩余账号不足，请联系管理员补充"})
 		return
@@ -265,11 +266,45 @@ func filterAccountSubscriptionQuery(q *gorm.DB, subscription string) *gorm.DB {
 	return q.Where("subscription = ?", subscription)
 }
 
+// 邮箱后缀只允许域名合法字符。这既排除了 LIKE 通配符（% 和 _）造成的误匹配，
+// 也免去了 MySQL 与 SQLite 对 ESCAPE 子句写法不一致的麻烦。
+var emailSuffixPattern = regexp.MustCompile(`^[a-z0-9.-]+$`)
+
+// normalizeEmailSuffix 归一化邮箱后缀：小写、去空格、去掉可能带上的 @ 前缀。
+// 非法或空输入统一返回空串，调用方按「不限后缀」处理，
+// 所以脏数据只会退化成随机派发，不会让兑换失败。
+func normalizeEmailSuffix(suffix string) string {
+	suffix = strings.ToLower(strings.TrimSpace(suffix))
+	suffix = strings.TrimPrefix(suffix, "@")
+	if suffix == "" || !emailSuffixPattern.MatchString(suffix) {
+		return ""
+	}
+	return suffix
+}
+
+// orderAccountCandidates 决定候选账号的取用顺序：
+// 指定了后缀偏好时把命中的账号顶到最前，其余账号维持原有的 FIFO 顺序兜底。
+//
+// 这里刻意用 ORDER BY 而不是 WHERE。偏好是软的：后缀内账号不够时要能用其他后缀补齐。
+// 而且 popMultipleAccounts 会复用同一个查询做存量预检，一旦加了 WHERE，
+// 偏好后缀不足 n 个就会被误判成账号池不足而整单失败。
+//
+// 排序表达式一次性拼完而不分两次 Order 调用：GORM 合并 OrderBy 子句时
+// 只会合并列排序，后续的 Order 会把前面设的表达式排序覆盖掉。
+// suffix 已由 normalizeEmailSuffix 限定为 [a-z0-9.-]，不含引号或通配符，内联进 SQL 是安全的。
+func orderAccountCandidates(q *gorm.DB, emailSuffix string) *gorm.DB {
+	suffix := normalizeEmailSuffix(emailSuffix)
+	if suffix == "" {
+		return q.Order("created_at ASC, id ASC")
+	}
+	return q.Order("CASE WHEN LOWER(email) LIKE '%@" + suffix + "' THEN 0 ELSE 1 END, created_at ASC, id ASC")
+}
+
 func dispatchHealthCheckEnabled() bool {
 	return GetCurrentSettings().DispatchHealthCheckEnabled
 }
 
-func popAccount(excludeID uint, subscription string) (*model.Account, error) {
+func popAccount(excludeID uint, subscription string, emailSuffix string) (*model.Account, error) {
 	timer := prometheus.NewTimer(utils.DispatchDuration)
 	defer timer.ObserveDuration()
 
@@ -283,7 +318,7 @@ func popAccount(excludeID uint, subscription string) (*model.Account, error) {
 	q = filterAccountSubscriptionQuery(q, subscription)
 
 	var candidates []model.Account
-	if err := q.Order("created_at ASC, id ASC").Limit(50).Find(&candidates).Error; err != nil {
+	if err := orderAccountCandidates(q, emailSuffix).Limit(50).Find(&candidates).Error; err != nil {
 		return nil, err
 	}
 	if len(candidates) == 0 {
@@ -433,7 +468,7 @@ func buildMultiTokenArray(accounts []model.Account) []gin.H {
 	return result
 }
 
-func popMultipleAccounts(n int, subscription string) ([]*model.Account, error) {
+func popMultipleAccounts(n int, subscription string, emailSuffix string) ([]*model.Account, error) {
 	if n <= 0 {
 		return nil, gorm.ErrRecordNotFound
 	}
@@ -444,6 +479,8 @@ func popMultipleAccounts(n int, subscription string) ([]*model.Account, error) {
 		Where("credit_limit = 0 OR credit_used < credit_limit")
 	q = filterAccountSubscriptionQuery(q, subscription)
 
+	// 存量预检刻意不带后缀偏好：偏好是软的，只要账号总量够就该继续派发，
+	// 缺口由其他后缀补齐。
 	var available int64
 	q.Count(&available)
 	if int(available) < n {
@@ -451,7 +488,7 @@ func popMultipleAccounts(n int, subscription string) ([]*model.Account, error) {
 	}
 
 	var candidates []model.Account
-	if err := q.Order("created_at ASC, id ASC").Limit(n * 4).Find(&candidates).Error; err != nil {
+	if err := orderAccountCandidates(q, emailSuffix).Limit(n * 4).Find(&candidates).Error; err != nil {
 		return nil, err
 	}
 	if !dispatchHealthCheckEnabled() {
@@ -875,7 +912,7 @@ func streamFillTokenAccounts(c *gin.Context, item tokenStreamCard, needed int, i
 	bound := make([]uint, 0, needed)
 
 	// 批量获取所需数量的账号，避免重复调用 popAccount
-	accounts, err := popMultipleAccounts(needed, item.card.Subscription)
+	accounts, err := popMultipleAccounts(needed, item.card.Subscription, item.card.EmailSuffix)
 	if err != nil || len(accounts) == 0 {
 		streamTokenEvent(c, "fail", gin.H{
 			"status":  http.StatusServiceUnavailable,
@@ -964,7 +1001,7 @@ func processOneCode(c *gin.Context, code string) ([]gin.H, gin.H, int) {
 
 	now := time.Now()
 	if isMulti {
-		accounts, err := popMultipleAccounts(card.AccountCount, card.Subscription)
+		accounts, err := popMultipleAccounts(card.AccountCount, card.Subscription, card.EmailSuffix)
 		if err != nil {
 			return nil, gin.H{"code": 2, "message": "账号池账号不足: " + code}, http.StatusServiceUnavailable
 		}
@@ -997,7 +1034,7 @@ func processOneCode(c *gin.Context, code string) ([]gin.H, gin.H, int) {
 		return buildMultiTokenArray(mods), nil, 0
 	}
 
-	account, err := popAccount(0, card.Subscription)
+	account, err := popAccount(0, card.Subscription, card.EmailSuffix)
 	if err != nil {
 		return nil, gin.H{"code": 2, "message": "账号池已空: " + code}, http.StatusServiceUnavailable
 	}
