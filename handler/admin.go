@@ -797,7 +797,6 @@ func PoolStats(c *gin.Context) {
 	database.DB.Model(&model.Account{}).Select("status, used, count(*) as count").Group("status, used").Find(&statusCounts)
 
 	var total, unused, used int64
-	var statusActive, statusSuspended, statusUsed int64
 	for _, sc := range statusCounts {
 		total += sc.Count
 		if sc.Used {
@@ -805,16 +804,25 @@ func PoolStats(c *gin.Context) {
 		} else {
 			unused += sc.Count
 		}
-		// 按状态分类统计
-		switch model.AccountStatus(sc.Status) {
-		case model.AccountStatusActive:
-			statusActive += sc.Count
-		case model.AccountStatusSuspended:
-			statusSuspended += sc.Count
-		case model.AccountStatusUsed:
-			statusUsed += sc.Count
-		}
 	}
+
+	// 健康状态统计（与前端展示口径一致）：
+	// 1. suspended: 已封禁账号
+	// 2. used: 额度已用完且未封禁的账号（前端计算状态）
+	// 3. active: 正常账号（既未封禁也未用完额度）
+	var statusSuspended int64
+	database.DB.Model(&model.Account{}).
+		Where("status = ?", model.AccountStatusSuspended).
+		Count(&statusSuspended)
+
+	var statusUsed int64
+	database.DB.Model(&model.Account{}).
+		Where("credit_limit > 0 AND credit_used >= credit_limit").
+		Where("status != ?", model.AccountStatusSuspended).
+		Count(&statusUsed)
+
+	// active = 总数 - 已暂停 - 额度已用
+	statusActive := total - statusSuspended - statusUsed
 
 	// 可用账号 = 真正能被派发出去的账号，条件与 popAccount 的候选查询保持一致：
 	// 未分配 且 状态正常 且 额度一点没动过 且 额度未耗尽。
