@@ -19,6 +19,37 @@ import (
 // 全表扫描时每批读取的账号数量，控制单次驻留内存的实体数量。
 const accountScanBatchSize = 100
 
+// parseDayStart / parseDayEnd 把前端传来的 YYYY-MM-DD 转成筛选边界。
+//
+// 必须用 ParseInLocation 按服务器本地时区解析，不能用 time.Parse。
+// time.Parse 不带时区信息时返回 UTC，而 MySQL 驱动在 DSN 带 loc=Local 时
+// 会对时间参数执行 In(cfg.Loc)，UTC 零点会被转成本地 08:00（东八区），
+// 导致整个筛选窗口偏移 8 小时、漏掉当天凌晨的数据。
+// 项目的 Docker 镜像固定 Asia/Shanghai，业务时间口径也按本地时区（见 AdminStats 的今日统计）。
+//
+// 区间取 [起始日 00:00, 结束日次日 00:00)，左闭右开，
+// 这样起始日和结束日当天的数据都会被完整包含。
+func parseDayStart(v string) (time.Time, bool) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return time.Time{}, false
+	}
+	t, err := time.ParseInLocation("2006-01-02", v, time.Local)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t, true
+}
+
+func parseDayEnd(v string) (time.Time, bool) {
+	t, ok := parseDayStart(v)
+	if !ok {
+		return time.Time{}, false
+	}
+	// next-day 00:00 配合 < 使用，等价于包含结束日全天
+	return t.AddDate(0, 0, 1), true
+}
+
 // 导入任务串行执行。
 //
 // 去重依赖任务开始时对库内 refreshToken 的一次快照，两个导入任务并发时
@@ -467,15 +498,13 @@ func ListAccounts(c *gin.Context) {
 	if keyword != "" {
 		q = q.Where("email LIKE ?", "%"+keyword+"%")
 	}
-	if createdFrom != "" {
-		if t, err := time.Parse("2006-01-02", createdFrom); err == nil {
-			q = q.Where("created_at >= ?", t)
-		}
+	// 按本地时区解析日期，并取 [起始日 00:00, 结束日次日 00:00) 这个左闭右开区间，
+	// 使首尾两天的数据都被完整包含。
+	if t, ok := parseDayStart(createdFrom); ok {
+		q = q.Where("created_at >= ?", t)
 	}
-	if createdTo != "" {
-		if t, err := time.Parse("2006-01-02", createdTo); err == nil {
-			q = q.Where("created_at < ?", t.AddDate(0, 0, 1))
-		}
+	if t, ok := parseDayEnd(createdTo); ok {
+		q = q.Where("created_at < ?", t)
 	}
 
 	q.Count(&total)

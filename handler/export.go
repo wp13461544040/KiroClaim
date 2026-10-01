@@ -138,15 +138,12 @@ func applyExportFilters(c *gin.Context, q *gorm.DB) *gorm.DB {
 	if v := c.Query("keyword"); v != "" {
 		q = q.Where("email LIKE ?", "%"+v+"%")
 	}
-	if v := c.Query("created_from"); v != "" {
-		if t, err := time.Parse("2006-01-02", v); err == nil {
-			q = q.Where("created_at >= ?", t)
-		}
+	// 与列表接口保持同一套日期口径，否则「导出当前筛选」会和列表看到的不一致
+	if t, ok := parseDayStart(c.Query("created_from")); ok {
+		q = q.Where("created_at >= ?", t)
 	}
-	if v := c.Query("created_to"); v != "" {
-		if t, err := time.Parse("2006-01-02", v); err == nil {
-			q = q.Where("created_at < ?", t.AddDate(0, 0, 1))
-		}
+	if t, ok := parseDayEnd(c.Query("created_to")); ok {
+		q = q.Where("created_at < ?", t)
 	}
 	return q
 }

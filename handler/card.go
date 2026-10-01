@@ -238,15 +238,12 @@ func ListCards(c *gin.Context) {
 	if keyword != "" {
 		q = q.Where("code LIKE ?", "%"+keyword+"%")
 	}
-	if createdFrom != "" {
-		if t, err := time.Parse("2006-01-02", createdFrom); err == nil {
-			q = q.Where("created_at >= ?", t)
-		}
+	// 按本地时区解析，区间左闭右开，含首尾两天全部数据（见 parseDayStart 注释）
+	if t, ok := parseDayStart(createdFrom); ok {
+		q = q.Where("created_at >= ?", t)
 	}
-	if createdTo != "" {
-		if t, err := time.Parse("2006-01-02", createdTo); err == nil {
-			q = q.Where("created_at < ?", t.AddDate(0, 0, 1))
-		}
+	if t, ok := parseDayEnd(createdTo); ok {
+		q = q.Where("created_at < ?", t)
 	}
 	if subscription != "" {
 		q = q.Where("subscription = ?", subscription)
