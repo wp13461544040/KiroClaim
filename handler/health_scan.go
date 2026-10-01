@@ -33,6 +33,43 @@ type healthScanState struct {
 	lastFlipped int
 	lastFailed  int
 	lastErr     string
+
+	// 本轮进度，供账号池页面实时展示。
+	// curEpoch 记录这份进度属于哪一轮：worker 累加前要先比对 epoch，
+	// 否则被取代的旧 worker 会把计数加到新一轮的进度上。
+	curEpoch uint64
+	curTotal int
+	curDone  int
+}
+
+// beginHealthScanProgress 在本轮候选确定后初始化进度。
+func beginHealthScanProgress(epoch uint64, total int) {
+	healthScan.mu.Lock()
+	healthScan.curEpoch = epoch
+	healthScan.curTotal = total
+	healthScan.curDone = 0
+	healthScan.mu.Unlock()
+}
+
+// bumpHealthScanProgress 记录一个账号检查完毕（无论成功、失败还是 panic）。
+// epoch 不匹配说明本轮已被取代，丢弃这次计数。
+func bumpHealthScanProgress(epoch uint64) {
+	healthScan.mu.Lock()
+	if healthScan.curEpoch == epoch && healthScan.curDone < healthScan.curTotal {
+		healthScan.curDone++
+	}
+	healthScan.mu.Unlock()
+}
+
+// clearHealthScanProgress 清空本轮进度。
+// 必须在巡检收尾时调用，否则 running 已经是 false 了，
+// 状态接口还会返回上一轮的残留进度。
+func clearHealthScanProgress() {
+	healthScan.mu.Lock()
+	healthScan.curEpoch = 0
+	healthScan.curTotal = 0
+	healthScan.curDone = 0
+	healthScan.mu.Unlock()
 }
 
 var (
@@ -193,6 +230,10 @@ func runHealthScanTick(s AppSettings) {
 	epoch := healthScanEpoch.Add(1)
 	checked, flipped, failed, err := scanAccountsOnce(s, epoch)
 
+	// 本轮已结束，清掉进度。不清的话 running 变成 false 后
+	// 状态接口还会继续返回这一轮的残留数字。
+	clearHealthScanProgress()
+
 	healthScan.mu.Lock()
 	healthScan.running = false
 	healthScan.lastEnded = time.Now()
@@ -260,6 +301,9 @@ func scanAccountsOnce(s AppSettings, epoch uint64) (int, int, int, error) {
 		return 0, 0, 0, nil
 	}
 
+	// 候选一次取定，本轮总数在这里就确定了，后面不会再变。
+	beginHealthScanProgress(epoch, len(candidates))
+
 	// 巡检是后台任务，并发压到限流值的一半，给前台的提取和导入留出槽位。
 	workers := currentUpstreamCheckConcurrency() / 2
 	if workers < 1 {
@@ -311,6 +355,11 @@ func scanAccountsOnce(s AppSettings, epoch uint64) (int, int, int, error) {
 						flipped.Add(1)
 					}
 				})
+
+				// 放在 runSafe 之后而不是用 defer：defer 是函数级的，
+				// 写在循环体里会堆积到整个 worker 退出才执行，进度就一直是 0。
+				// runSafe 已经 recover 了 panic，所以这一行必定会被执行到。
+				bumpHealthScanProgress(epoch)
 			}
 		}()
 	}
@@ -340,7 +389,19 @@ func HealthScanStatus() map[string]interface{} {
 	lastErr := healthScan.lastErr
 	lastStarted := healthScan.lastStarted
 	lastEnded := healthScan.lastEnded
+	curTotal := healthScan.curTotal
+	curDone := healthScan.curDone
 	healthScan.mu.RUnlock()
+
+	// 百分比在后端算好，避免前端各处重复实现、口径不一致。
+	// 总数为 0 时给 0 而不是 NaN。
+	percent := 0
+	if curTotal > 0 {
+		percent = curDone * 100 / curTotal
+		if percent > 100 {
+			percent = 100
+		}
+	}
 
 	status := map[string]interface{}{
 		"running":      running,
@@ -350,6 +411,9 @@ func HealthScanStatus() map[string]interface{} {
 		"lastError":    lastErr,
 		"pendingTotal": pending,
 		"inQuietHours": quiet,
+		"currentTotal": curTotal,
+		"currentDone":  curDone,
+		"percent":      percent,
 	}
 	if s.HealthScanQuietStartHour != s.HealthScanQuietEndHour {
 		status["quietWindow"] = fmt.Sprintf("北京时间 %02d:00-%02d:00",
@@ -388,6 +452,81 @@ func pendingHealthScanCount() int64 {
 	return n
 }
 
+// GET /admin/accounts/health-scan/stream
+// 用 SSE 实时推送巡检进度，供账号池页面展示。
+//
+// 鉴权走 AdminAuth 的 query token 分支：EventSource 不支持自定义请求头，
+// 前端把 token 放在 ?token= 里（与卡密健康检测的 SSE 一致）。
+//
+// 这里是「轮内快照 + 变化即推」的模型，而不是给每个客户端注册订阅者：
+// 巡检是单例后台任务，状态本来就存在 healthScanState 里，
+// 定时读快照比维护订阅者列表、广播和清理简单得多，也不怕漏事件。
+func StreamHealthScanProgress(c *gin.Context) {
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "不支持流式响应"})
+		return
+	}
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	// 反向代理默认会缓冲响应，不关掉的话进度会被攒着一次性吐出来
+	c.Header("X-Accel-Buffering", "no")
+	c.Status(http.StatusOK)
+
+	ctx := c.Request.Context()
+
+	send := func(status map[string]interface{}) bool {
+		select {
+		case <-ctx.Done():
+			return false
+		default:
+		}
+		c.SSEvent("progress", status)
+		flusher.Flush()
+		return true
+	}
+
+	// 先推一次当前状态，避免页面要等一个心跳周期才有内容
+	if !send(HealthScanStatus()) {
+		return
+	}
+
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	// 即使进度没变也要定期推，一来当心跳保活连接（反向代理会掐掉长时间静默的连接），
+	// 二来静默时段、待刷新总数这些字段跟巡检进度无关但也会变。
+	const heartbeatEvery = 15
+	tick := 0
+	lastDone, lastTotal, lastRunning := -1, -1, false
+
+	for {
+		select {
+		case <-ctx.Done():
+			// 客户端关页面或断网，结束这次推送
+			return
+		case <-ticker.C:
+			status := HealthScanStatus()
+			done, _ := status["currentDone"].(int)
+			total, _ := status["currentTotal"].(int)
+			running, _ := status["running"].(bool)
+
+			tick++
+			changed := done != lastDone || total != lastTotal || running != lastRunning
+			if !changed && tick%heartbeatEvery != 0 {
+				continue
+			}
+			lastDone, lastTotal, lastRunning = done, total, running
+
+			if !send(status) {
+				return
+			}
+		}
+	}
+}
+
 // POST /admin/accounts/health-scan
 // 手动触发一轮巡检，不等待完成。
 func TriggerHealthScan(c *gin.Context) {
@@ -402,7 +541,7 @@ func TriggerHealthScan(c *gin.Context) {
 	s := GetCurrentSettings()
 	goSafe("health-scan-manual", func() { runHealthScanTick(s) })
 	AddOpLogWithCtx(c, "refresh", "手动触发账号健康巡检", "admin")
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "巡检已启动，可在设置页查看进度"})
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "巡检已启动，可在账号池页面查看实时进度"})
 }
 
 // POST /admin/accounts/health-scan/reset
@@ -413,6 +552,9 @@ func ResetHealthScanState(c *gin.Context) {
 	wasRunning := healthScan.running
 	healthScan.running = false
 	healthScan.lastErr = ""
+	healthScan.curEpoch = 0
+	healthScan.curTotal = 0
+	healthScan.curDone = 0
 	healthScan.mu.Unlock()
 
 	// 递增 epoch 以中断任何可能还在跑的 worker goroutine

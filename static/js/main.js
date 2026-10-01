@@ -26,9 +26,12 @@ function switchTab(name, el) {
   } else {
     stopDashboardAutoRefresh();
   }
-  // 切换到账号页时触发加载
+  // 切换到账号页时触发加载，并开启巡检进度推送；离开时断开，不留着空连接
   if (name === 'accounts') {
     loadAccounts(1);
+    if (typeof startHealthScanProgress === 'function') startHealthScanProgress();
+  } else if (typeof stopHealthScanProgress === 'function') {
+    stopHealthScanProgress();
   }
   if (name === 'assigned') loadAssignedAccounts(1);
   if (name === 'cards') loadCards(1);
@@ -74,7 +77,10 @@ function initApp() {
     document.getElementById('tab-' + savedTab).classList.add('active');
 
     if (savedTab === 'dashboard') { loadStats(); startDashboardAutoRefresh(); }
-    if (savedTab === 'accounts') loadAccounts(1);
+    if (savedTab === 'accounts') {
+      loadAccounts(1);
+      if (typeof startHealthScanProgress === 'function') startHealthScanProgress();
+    }
     if (savedTab === 'assigned') loadAssignedAccounts(1);
     if (savedTab === 'cards') loadCards(1);
     if (savedTab === 'logs') loadLogs(1);

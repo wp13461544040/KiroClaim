@@ -949,6 +949,92 @@ async function cleanupUsedCreditAccounts() {
   }
 }
 
+// ---- 巡检进度（SSE 实时推送）----
+
+let healthScanSource = null;
+// 上一次看到的 running 状态，用于在巡检结束的那一刻刷新列表
+let healthScanWasRunning = false;
+
+// 打开巡检进度的 SSE 连接。
+// EventSource 不支持自定义请求头，token 只能走 URL 参数，
+// 后端 AdminAuth 为此留了 query token 分支（与卡密健康检测的 SSE 一致）。
+function startHealthScanProgress() {
+  stopHealthScanProgress();
+
+  const token = localStorage.getItem('adminToken');
+  if (!token) return;
+
+  healthScanSource = new EventSource('/admin/accounts/health-scan/stream?token=' + encodeURIComponent(token));
+
+  healthScanSource.addEventListener('progress', function(event) {
+    let status;
+    try {
+      status = JSON.parse(event.data);
+    } catch (e) {
+      return;
+    }
+    renderHealthScanProgress(status);
+  });
+
+  // EventSource 自带断线重连，这里不手动重连，否则会和它的重试叠加成连接风暴。
+  // 真正失效（比如 token 过期导致 401）时浏览器也会反复重试，
+  // 所以连接关闭且进度不再更新时把进度条隐藏，避免停在一个过时的百分比上。
+  healthScanSource.onerror = function() {
+    if (healthScanSource && healthScanSource.readyState === EventSource.CLOSED) {
+      hideHealthScanProgress();
+    }
+  };
+}
+
+function stopHealthScanProgress() {
+  if (healthScanSource) {
+    healthScanSource.close();
+    healthScanSource = null;
+  }
+  healthScanWasRunning = false;
+}
+
+function hideHealthScanProgress() {
+  const box = document.getElementById('healthScanProgress');
+  if (box) box.hidden = true;
+}
+
+function renderHealthScanProgress(status) {
+  const box = document.getElementById('healthScanProgress');
+  if (!box) return;
+
+  const running = !!status.running;
+  const total = Number(status.currentTotal) || 0;
+  const done = Number(status.currentDone) || 0;
+  const percent = Math.max(0, Math.min(100, Number(status.percent) || 0));
+
+  // 巡检刚结束：刷新一次列表，让状态变更立刻反映出来
+  if (healthScanWasRunning && !running) {
+    loadAccounts(1);
+    loadAccountFilterOptions();
+    if (typeof loadStats === 'function') loadStats();
+  }
+  healthScanWasRunning = running;
+
+  // 只在真的有一轮在跑时显示。手动触发到候选取定之间会有
+  // running = true 但 total = 0 的短暂间隙，此时显示「准备中」而不是 0/0。
+  if (!running) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+
+  const textEl = document.getElementById('healthScanProgressText');
+  const percentEl = document.getElementById('healthScanProgressPercent');
+  const fillEl = document.getElementById('healthScanProgressFill');
+  const barEl = box.querySelector('.k-progress-bg');
+
+  if (textEl) textEl.textContent = total > 0 ? `${done} / ${total}` : '准备中...';
+  if (percentEl) percentEl.textContent = total > 0 ? percent + '%' : '';
+  if (fillEl) fillEl.style.width = percent + '%';
+  if (barEl) barEl.setAttribute('aria-valuenow', String(percent));
+}
+
 // 把历史上因用过额度被自动移入已使用的账号放回账号池。
 // 开启库存模式只影响之后的健康检查，不会追溯处理已有数据，所以需要手动补这一次。
 // 先做一次预览拿到数量，再让用户确认，避免盲改一批数据。

@@ -143,6 +143,7 @@ func main() {
 		admin.POST("/accounts/cleanup-used-credit", handler.CleanupUsedCreditAccountsAPI)
 		admin.POST("/accounts/health-scan", handler.TriggerHealthScan)
 		admin.POST("/accounts/health-scan/reset", handler.ResetHealthScanState)
+		admin.GET("/accounts/health-scan/stream", handler.StreamHealthScanProgress)
 
 		admin.POST("/cards/generate", handler.GenerateCards)
 		admin.GET("/cards", handler.ListCards)
