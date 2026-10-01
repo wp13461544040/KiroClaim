@@ -179,26 +179,31 @@
         min-width: 0;
     }
 
-    /* 筛选栏输入框填满单行 */
-    #tab-accounts .k-card-body > div:first-child .k-input[type="text"],
-    #tab-assigned .k-card-body > div:first-child .k-input[type="text"],
-    #tab-cards .k-card-body > div:first-child .k-input[type="text"],
-    #tab-logs .k-card-body > div:first-child .k-input[type="text"] {
+    /* 筛选栏输入框填满单行。
+       按输入框本身定位而不是 card-body 的第一个 div：
+       账号池的 card-body 里还有巡检进度条，用 :first-child 会错位 */
+    #tab-accounts .k-card-body .k-input[type="text"],
+    #tab-assigned .k-card-body .k-input[type="text"],
+    #tab-cards .k-card-body .k-input[type="text"],
+    #tab-logs .k-card-body .k-input[type="text"] {
         width: 100%;
         min-width: 0;
         flex: 1 1 100%;
     }
-    #tab-accounts .k-card-body > div:first-child .k-input[type="date"],
-    #tab-assigned .k-card-body > div:first-child .k-input[type="date"],
-    #tab-cards .k-card-body > div:first-child .k-input[type="date"],
-    #tab-logs .k-card-body > div:first-child .k-input[type="date"] {
+    /* 按 .k-input[type=date] 本身定位，不依赖筛选栏在 card-body 里的位置：
+       账号池的 card-body 里还有巡检进度条，用 :first-child 会错位 */
+    #tab-accounts .k-card-body .k-input[type="date"],
+    #tab-assigned .k-card-body .k-input[type="date"],
+    #tab-cards .k-card-body .k-input[type="date"],
+    #tab-logs .k-card-body .k-input[type="date"] {
         flex: 1 1 140px;
         min-width: 0;
     }
 
-    /* 解除外层 overflow-x:auto 带来的横滚，卡片布局不需要 */
-    #tab-accounts .k-card-body > div:nth-of-type(2),
-    #tab-assigned .k-card-body > div:nth-of-type(2) {
+    /* 解除外层 overflow-x:auto 带来的横滚，卡片布局不需要。
+       直接按 .pagination 选择，同理不依赖子元素序号 */
+    #tab-accounts .k-card-body > .pagination,
+    #tab-assigned .k-card-body > .pagination {
         overflow-x: visible !important;
     }
 

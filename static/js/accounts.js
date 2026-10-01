@@ -33,7 +33,7 @@ async function loadAccounts(page = 1) {
   const r = await api('GET', url);
   const tbody = document.getElementById('accountsBody');
   if (r.code !== 0 || !r.data.list.length) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:40px">暂无未分配账号</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:40px">暂无未分配账号</td></tr>';
     // 清空分页，避免筛选后无结果时残留上一次的页码
     renderPagination('accountsPagination', 0, size, 1, loadAccounts, 'accounts');
     updateAccountBatchBtn();
@@ -68,6 +68,7 @@ async function loadAccounts(page = 1) {
         </div>
         <div class="k-progress-bg"><div class="k-progress-fill ${creditCls}" style="width:${creditPct}%"></div></div>
       </td>
+      <td data-label="导入时间" style="color:#999;font-size:12px" title="${a.CreatedAt ? new Date(a.CreatedAt).toLocaleString('zh-CN', {hour12:false}) : ''}">${a.CreatedAt ? new Date(a.CreatedAt).toLocaleString('zh-CN', {hour12:false, month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'}) : '-'}</td>
       <td data-label="最后检查" style="color:#999;font-size:12px">${a.LastCheckedAt ? new Date(a.LastCheckedAt).toLocaleString('zh-CN', {hour12:false, month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'}) : '-'}</td>
       <td data-label="操作" class="account-action-cell">
         <div class="account-actions">
@@ -1131,7 +1132,7 @@ async function loadAssignedAccounts(page = 1) {
   const r = await api('GET', url);
   const tbody = document.getElementById('assignedBody');
   if (r.code !== 0 || !r.data.list.length) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:40px">暂无已分配账号</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#999;padding:40px">暂无已分配账号</td></tr>';
     renderPagination('assignedPagination', 0, size, 1, loadAssignedAccounts, 'assigned');
     updateAssignedBatchBtn();
     return;
@@ -1167,6 +1168,7 @@ async function loadAssignedAccounts(page = 1) {
         </div>
         <div class="k-progress-bg"><div class="k-progress-fill ${creditCls}" style="width:${creditPct}%"></div></div>
       </td>
+      <td data-label="导入时间" style="color:#999;font-size:12px" title="${a.CreatedAt ? new Date(a.CreatedAt).toLocaleString('zh-CN', {hour12:false}) : ''}">${fmtTime(a.CreatedAt)}</td>
       <td data-label="分配时间" style="color:#999;font-size:12px">${fmtTime(a.UsedAt)}</td>
       <td data-label="最后检查" style="color:#999;font-size:12px">${fmtTime(a.LastCheckedAt)}</td>
       <td data-label="操作" class="account-action-cell">
