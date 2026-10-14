@@ -38,6 +38,7 @@ async function loadStats() {
 
   // 图表骨架屏
   showChartSkeleton('accountStatusChart', 4);
+  showChartSkeleton('cardDistributionChart', 5);
 
   const r = await api('GET', '/admin/pool/stats');
 
@@ -64,9 +65,13 @@ async function loadStats() {
   var today = r.data.today || {};
   document.getElementById('statTodayActivate').textContent = today.activate || 0;
 
-  // 账号状态统计（三态）- 直接传递给图表，不更新独立元素
+  // 账号状态统计（三态）- 直接传递给图表,不更新独立元素
   const statusCount = r.data.accounts.status || { active: 0, used: 0, suspended: 0 };
   drawAccountStatusChart(statusCount);
+
+  // 卡密分布统计
+  const cardDist = r.data.cards.distribution || [];
+  drawCardDistributionChart(cardDist);
 
   // 加载最近活动
   loadRecentActivity();
@@ -167,6 +172,54 @@ function drawAccountStatusChart(statusCount) {
           <div class="cute-donut-label">健康率</div>
         </div>
       </div>
+    </div>
+  `;
+}
+
+// 绘制卡密分布图表
+function drawCardDistributionChart(distribution) {
+  const canvas = document.getElementById('cardDistributionChart');
+  if (!canvas) return;
+
+  if (!distribution || distribution.length === 0) {
+    canvas.innerHTML = emptyChart();
+    return;
+  }
+
+  // 取前10个最多的卡密类型
+  const topDist = distribution.slice(0, 10);
+  const maxCount = Math.max(...topDist.map(d => d.count));
+
+  const barHtml = topDist.map((d, idx) => {
+    const percent = maxCount > 0 ? (d.count / maxCount * 100) : 0;
+    const colors = [
+      'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+      'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+      'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+      'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+      'linear-gradient(135deg, #30cfd0 0%, #330867 100%)',
+      'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
+      'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
+      'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)',
+      'linear-gradient(135deg, #fbc2eb 0%, #a6c1ee 100%)'
+    ];
+    const color = colors[idx % colors.length];
+    
+    return `
+      <div class="cute-bar-row">
+        <div class="cute-bar-label" title="${d.label}">${d.label}</div>
+        <div class="cute-bar-wrapper">
+          <div class="cute-bar-fill" style="width:${percent}%;background:${color}"></div>
+          <div class="cute-bar-value">${d.count}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  canvas.innerHTML = `
+    <div class="cute-bar-chart">
+      ${barHtml}
     </div>
   `;
 }

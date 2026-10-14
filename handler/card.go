@@ -190,6 +190,7 @@ func ListCards(c *gin.Context) {
 	createdFrom := c.Query("created_from")
 	createdTo := c.Query("created_to")
 	subscription := strings.TrimSpace(c.Query("subscription"))
+	accountCount, accountCountErr := strconv.Atoi(c.Query("account_count"))
 	shopStatus := strings.TrimSpace(c.Query("shop_status"))
 	shopProductID, _ := strconv.ParseUint(c.DefaultQuery("shop_product_id", "0"), 10, 64)
 	shopPrice, shopPriceErr := strconv.ParseInt(c.Query("shop_price"), 10, 64)
@@ -203,6 +204,13 @@ func ListCards(c *gin.Context) {
 	}
 	if size > 1000 {
 		size = 1000
+	}
+	if accountCountErr != nil && c.Query("account_count") != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "账号数量筛选无效"})
+		return
+	}
+	if accountCount < 0 {
+		accountCount = 0
 	}
 	if shopPriceErr != nil && c.Query("shop_price") != "" {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "商城售价筛选无效"})
@@ -247,6 +255,9 @@ func ListCards(c *gin.Context) {
 	}
 	if subscription != "" {
 		q = q.Where("subscription = ?", subscription)
+	}
+	if accountCount > 0 {
+		q = q.Where("account_count = ?", accountCount)
 	}
 	shopCardIDs := database.DB.Model(&model.CommerceProductCard{}).Select("card_id")
 	if shopProductID > 0 {
@@ -352,8 +363,38 @@ func ListCards(c *gin.Context) {
 			})
 		}
 	}
+	// 生成卡密类型分布数据，用于筛选下拉框
+	type cardTypeDistribution struct {
+		Label        string `json:"label"`
+		Subscription string `json:"subscription"`
+		AccountCount int    `json:"accountCount"`
+		Count        int    `json:"count"`
+	}
+	var distributions []cardTypeDistribution
+	rows, err := database.DB.Model(&model.Card{}).
+		Select("subscription, account_count, COUNT(*) as count").
+		Where("subscription <> '' AND account_count > 0").
+		Group("subscription, account_count").
+		Order("subscription ASC, account_count DESC").
+		Rows()
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var sub string
+			var accCount, count int
+			if err := rows.Scan(&sub, &accCount, &count); err == nil {
+				distributions = append(distributions, cardTypeDistribution{
+					Label:        fmt.Sprintf("%s %d号", sub, accCount),
+					Subscription: sub,
+					AccountCount: accCount,
+					Count:        count,
+				})
+			}
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{"code": 0, "data": gin.H{
-		"total": total, "page": page, "size": size, "list": list, "filters": gin.H{"subscriptions": subscriptions, "shopProducts": shopProductItems, "shopPriceGroups": shopPriceGroups},
+		"total": total, "page": page, "size": size, "list": list, "filters": gin.H{"subscriptions": subscriptions, "shopProducts": shopProductItems, "shopPriceGroups": shopPriceGroups, "distribution": distributions},
 	}})
 }
 

@@ -1,6 +1,7 @@
 ﻿package handler
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"sort"
@@ -870,6 +871,42 @@ func PoolStats(c *gin.Context) {
 	var multiCardTotal int64
 	database.DB.Model(&model.Card{}).Where("account_count > 1").Count(&multiCardTotal)
 
+	// 卡密分布统计：按 subscription + account_count 组合分组。
+	type cardDistribution struct {
+		Subscription string
+		AccountCount int
+		Count        int64
+	}
+	var cardDists []cardDistribution
+	database.DB.Model(&model.Card{}).
+		Select("subscription, account_count, count(*) as count").
+		Group("subscription, account_count").
+		Find(&cardDists)
+
+	cardDistResults := make([]gin.H, 0, len(cardDists))
+	for _, cd := range cardDists {
+		label := strings.TrimSpace(cd.Subscription)
+		if label == "" {
+			label = "未知"
+		}
+		label = fmt.Sprintf("%s %d号", label, cd.AccountCount)
+		cardDistResults = append(cardDistResults, gin.H{
+			"label":        label,
+			"subscription": cd.Subscription,
+			"accountCount": cd.AccountCount,
+			"count":        cd.Count,
+		})
+	}
+	// 按数量降序，数量相同按名称升序排序。
+	sort.SliceStable(cardDistResults, func(i, j int) bool {
+		ci, _ := cardDistResults[i]["count"].(int64)
+		cj, _ := cardDistResults[j]["count"].(int64)
+		if ci != cj {
+			return ci > cj
+		}
+		return cardDistResults[i]["label"].(string) < cardDistResults[j]["label"].(string)
+	})
+
 	// 今日统计：单次 GROUP BY。
 	todayStart := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 0, 0, 0, 0, time.Local)
 	type actionCount struct {
@@ -901,10 +938,11 @@ func PoolStats(c *gin.Context) {
 			"subscriptions": subscriptionDist,
 		},
 		"cards": gin.H{
-			"total":  cardTotal,
-			"unused": cardUnused,
-			"active": cardActive,
-			"multi":  multiCardTotal,
+			"total":        cardTotal,
+			"unused":       cardUnused,
+			"active":       cardActive,
+			"multi":        multiCardTotal,
+			"distribution": cardDistResults,
 		},
 		"today": gin.H{
 			"activate": todayActivate,

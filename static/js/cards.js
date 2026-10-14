@@ -155,7 +155,17 @@ async function loadCards(page = 1) {
   if (cardKeyword) url += `&keyword=${encodeURIComponent(cardKeyword)}`;
   if (createdFrom) url += `&created_from=${createdFrom}`;
   if (createdTo) url += `&created_to=${createdTo}`;
-  if (cardSubscriptionFilter) url += `&subscription=${encodeURIComponent(cardSubscriptionFilter)}`;
+  if (cardSubscriptionFilter) {
+    // 卡密类型筛选格式: "subscription|accountCount"
+    const parts = cardSubscriptionFilter.split('|');
+    if (parts.length === 2) {
+      url += `&subscription=${encodeURIComponent(parts[0])}`;
+      url += `&account_count=${parts[1]}`;
+    } else {
+      // 兼容旧格式（纯订阅名称）
+      url += `&subscription=${encodeURIComponent(cardSubscriptionFilter)}`;
+    }
+  }
   if (cardShopStatusFilter) url += `&shop_status=${encodeURIComponent(cardShopStatusFilter)}`;
   const shopGroup = cardShopPriceGroups.find(function(row) { return row.key === cardShopGroupFilter; });
   if (shopGroup) {
@@ -258,16 +268,27 @@ function selectCardShopGroup(value, text, item) {
 }
 
 function updateCardFilterOptions(filters) {
-  const subscriptions = Array.isArray(filters.subscriptions) ? filters.subscriptions : [];
+  // 使用卡密类型分布数据替代简单的订阅列表
+  const distributions = Array.isArray(filters.distribution) ? filters.distribution : [];
   const subscriptionMenu = document.querySelector('#cardSubscriptionDropdown .k-dropdown-menu');
   if (subscriptionMenu) {
     subscriptionMenu.innerHTML = '';
-    [''].concat(subscriptions).forEach(function(value) {
+    
+    // 添加"全部卡密类型"选项
+    const allItem = document.createElement('div');
+    allItem.className = 'k-dropdown-item' + (cardSubscriptionFilter === '' ? ' selected' : '');
+    allItem.textContent = '全部卡密类型';
+    allItem.onclick = function() { selectCardSubscription('', '全部卡密类型', allItem); };
+    subscriptionMenu.appendChild(allItem);
+    
+    // 添加卡密类型选项（包含订阅名称、账号数、数量）
+    distributions.forEach(function(dist) {
       const item = document.createElement('div');
-      const text = value || '全部订阅';
-      item.className = 'k-dropdown-item' + (value === cardSubscriptionFilter ? ' selected' : '');
+      const filterValue = dist.subscription + '|' + dist.accountCount; // 使用组合值作为筛选条件
+      const text = dist.label + ' (' + dist.count + ' 张)';
+      item.className = 'k-dropdown-item' + (filterValue === cardSubscriptionFilter ? ' selected' : '');
       item.textContent = text;
-      item.onclick = function() { selectCardSubscription(value, text, item); };
+      item.onclick = function() { selectCardSubscription(filterValue, text, item); };
       subscriptionMenu.appendChild(item);
     });
   }
