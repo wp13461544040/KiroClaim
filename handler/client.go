@@ -459,6 +459,11 @@ func buildTokenEntry(a *model.Account) gin.H {
 		"refreshToken": a.RefreshToken,
 		"clientId":     a.ClientId,
 		"clientSecret": a.ClientSecret,
+		"subscription": a.Subscription,
+		"creditUsed":   a.CreditUsed,
+		"creditLimit":  a.CreditLimit,
+		"region":       a.Region,
+		"provider":     a.Provider,
 	}
 }
 
