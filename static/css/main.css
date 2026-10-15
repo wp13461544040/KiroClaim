@@ -2707,3 +2707,231 @@ textarea.k-input::-webkit-scrollbar-corner {
 .k-table tbody tr:last-child td {
   border-bottom: none;
 }
+
+/* 卡密分布图表样式 */
+.cute-bar-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.cute-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  animation: fadeInUp 0.3s ease-out backwards;
+}
+
+.cute-bar-row:nth-child(1) { animation-delay: 0.05s; }
+.cute-bar-row:nth-child(2) { animation-delay: 0.1s; }
+.cute-bar-row:nth-child(3) { animation-delay: 0.15s; }
+.cute-bar-row:nth-child(4) { animation-delay: 0.2s; }
+.cute-bar-row:nth-child(5) { animation-delay: 0.25s; }
+.cute-bar-row:nth-child(6) { animation-delay: 0.3s; }
+.cute-bar-row:nth-child(7) { animation-delay: 0.35s; }
+.cute-bar-row:nth-child(8) { animation-delay: 0.4s; }
+.cute-bar-row:nth-child(9) { animation-delay: 0.45s; }
+.cute-bar-row:nth-child(10) { animation-delay: 0.5s; }
+
+.cute-bar-label {
+  min-width: 140px;
+  max-width: 140px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+
+.cute-bar-wrapper {
+  flex: 1;
+  position: relative;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  background: var(--bg-subtle);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.cute-bar-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  border-radius: var(--radius);
+  transition: width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: barGrow 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+
+.cute-bar-value {
+  position: relative;
+  z-index: 1;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-main);
+  line-height: 32px;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes barGrow {
+  from {
+    width: 0 !important;
+  }
+}
+
+.cute-empty-chart {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  color: var(--text-muted);
+  font-size: 13px;
+  background: var(--bg-subtle);
+  border-radius: var(--radius);
+}
+
+/* 账号状态图表样式 */
+.cute-status-chart-simple {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 32px;
+  align-items: center;
+  padding: 16px;
+}
+
+.cute-status-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cute-stat-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cute-stat-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cute-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.cute-stat-item.mint .cute-dot {
+  background: linear-gradient(135deg, #7dd3fc, #34d399);
+}
+
+.cute-stat-item.amber .cute-dot {
+  background: linear-gradient(135deg, #fcd34d, #f59e0b);
+}
+
+.cute-stat-item.rose .cute-dot {
+  background: linear-gradient(135deg, #fda4af, #fb7185);
+}
+
+.cute-stat-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.cute-stat-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-main);
+  min-width: 40px;
+  text-align: right;
+}
+
+.cute-donut {
+  position: relative;
+  width: 160px;
+  height: 160px;
+  flex-shrink: 0;
+}
+
+.cute-donut-svg {
+  transform: rotate(-90deg);
+}
+
+.cute-ring-segment {
+  transition: stroke-dasharray 0.8s cubic-bezier(0.34, 1.56, 0.64, 1),
+              stroke-dashoffset 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.cute-ring-segment.delayed {
+  animation: fadeIn 0.4s ease-out 0.2s backwards;
+}
+
+.cute-ring-segment.delayed-more {
+  animation: fadeIn 0.4s ease-out 0.4s backwards;
+}
+
+.cute-donut-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+.cute-donut-value {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--text-main);
+  line-height: 1;
+}
+
+.cute-donut-value span {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.cute-donut-label {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .cute-status-chart-simple {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  
+  .cute-donut {
+    margin: 0 auto;
+  }
+  
+  .cute-bar-label {
+    min-width: 100px;
+    max-width: 100px;
+    font-size: 11px;
+  }
+}
