@@ -881,9 +881,9 @@ func PoolStats(c *gin.Context) {
 	}
 	var cardDists []cardDistribution
 	database.DB.Model(&model.Card{}).
-		Select("subscription, account_count, count(*) as count, "+
-			"sum(case when used = 1 then 1 else 0 end) as used_count, "+
-			"sum(case when used = 0 then 1 else 0 end) as unused_count").
+		Select("subscription, account_count, COUNT(*) as count, "+
+			"SUM(CASE WHEN used_at IS NOT NULL THEN 1 ELSE 0 END) as used_count, "+
+			"SUM(CASE WHEN used_at IS NULL THEN 1 ELSE 0 END) as unused_count").
 		Group("subscription, account_count").
 		Find(&cardDists)
 
