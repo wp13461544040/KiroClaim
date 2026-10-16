@@ -875,15 +875,15 @@ func PoolStats(c *gin.Context) {
 	type cardDistribution struct {
 		Subscription string
 		AccountCount int
-		Total        int64
-		Used         int64
-		Unused       int64
+		Count        int64
+		UsedCount    int64
+		UnusedCount  int64
 	}
 	var cardDists []cardDistribution
 	database.DB.Model(&model.Card{}).
-		Select("subscription, account_count, count(*) as total, "+
-			"sum(case when used = 1 then 1 else 0 end) as used, "+
-			"sum(case when used = 0 then 1 else 0 end) as unused").
+		Select("subscription, account_count, count(*) as count, "+
+			"sum(case when used = 1 then 1 else 0 end) as used_count, "+
+			"sum(case when used = 0 then 1 else 0 end) as unused_count").
 		Group("subscription, account_count").
 		Find(&cardDists)
 
@@ -898,9 +898,9 @@ func PoolStats(c *gin.Context) {
 			"label":        label,
 			"subscription": cd.Subscription,
 			"accountCount": cd.AccountCount,
-			"total":        cd.Total,
-			"used":         cd.Used,
-			"unused":       cd.Unused,
+			"total":        cd.Count,
+			"used":         cd.UsedCount,
+			"unused":       cd.UnusedCount,
 		})
 	}
 	// 按数量降序，数量相同按名称升序排序。

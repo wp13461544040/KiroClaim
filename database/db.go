@@ -99,6 +99,14 @@ func Init(dsn string) {
 			sqlDB.SetMaxOpenConns(8)
 			sqlDB.SetMaxIdleConns(8)
 			sqlDB.SetConnMaxLifetime(0)
+
+			// 启动时执行 WAL checkpoint，将 WAL 文件中的数据合并到主数据库
+			// 这确保服务启动后能读取到所有历史数据
+			if err := DB.Exec("PRAGMA wal_checkpoint(TRUNCATE)").Error; err != nil {
+				log.Printf("警告: WAL checkpoint 失败: %v", err)
+			} else {
+				log.Println("WAL checkpoint 完成")
+			}
 		}
 		log.Println("SQLite 已配置: journal_mode=WAL, synchronous=NORMAL, busy_timeout=5s, MaxOpen=8, MaxIdle=8")
 	}
