@@ -188,37 +188,44 @@ function drawCardDistributionChart(distribution) {
 
   // 取前10个最多的卡密类型
   const topDist = distribution.slice(0, 10);
-  const maxCount = Math.max(...topDist.map(d => d.count));
+  const maxTotal = Math.max(...topDist.map(d => d.total || 0));
 
   const barHtml = topDist.map((d, idx) => {
-    const percent = maxCount > 0 ? (d.count / maxCount * 100) : 0;
-    const colors = [
-      'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-      'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-      'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
-      'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
-      'linear-gradient(135deg, #30cfd0 0%, #330867 100%)',
-      'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
-      'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
-      'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)',
-      'linear-gradient(135deg, #fbc2eb 0%, #a6c1ee 100%)'
-    ];
-    const color = colors[idx % colors.length];
+    const total = d.total || 0;
+    const used = d.used || 0;
+    const unused = d.unused || 0;
+    
+    const usedPercent = maxTotal > 0 ? (used / maxTotal * 100) : 0;
+    const unusedPercent = maxTotal > 0 ? (unused / maxTotal * 100) : 0;
     
     return `
       <div class="cute-bar-row">
         <div class="cute-bar-label" title="${d.label}">${d.label}</div>
-        <div class="cute-bar-wrapper">
-          <div class="cute-bar-fill" style="width:${percent}%;background:${color}"></div>
-          <div class="cute-bar-value">${d.count}</div>
+        <div class="cute-bar-stack-wrapper">
+          <div class="cute-bar-segment used" style="width:${usedPercent}%">
+            ${used > 0 ? `<span class="cute-bar-segment-value">${used}</span>` : ''}
+          </div>
+          <div class="cute-bar-segment unused" style="width:${unusedPercent}%">
+            ${unused > 0 ? `<span class="cute-bar-segment-value">${unused}</span>` : ''}
+          </div>
         </div>
+        <div class="cute-bar-total">${total}</div>
       </div>
     `;
   }).join('');
 
   canvas.innerHTML = `
     <div class="cute-bar-chart">
+      <div class="cute-bar-legend">
+        <div class="cute-legend-item">
+          <span class="cute-legend-dot used"></span>
+          <span class="cute-legend-label">已使用</span>
+        </div>
+        <div class="cute-legend-item">
+          <span class="cute-legend-dot unused"></span>
+          <span class="cute-legend-label">未使用</span>
+        </div>
+      </div>
       ${barHtml}
     </div>
   `;

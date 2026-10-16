@@ -875,11 +875,15 @@ func PoolStats(c *gin.Context) {
 	type cardDistribution struct {
 		Subscription string
 		AccountCount int
-		Count        int64
+		Total        int64
+		Used         int64
+		Unused       int64
 	}
 	var cardDists []cardDistribution
 	database.DB.Model(&model.Card{}).
-		Select("subscription, account_count, count(*) as count").
+		Select("subscription, account_count, count(*) as total, "+
+			"sum(case when used = 1 then 1 else 0 end) as used, "+
+			"sum(case when used = 0 then 1 else 0 end) as unused").
 		Group("subscription, account_count").
 		Find(&cardDists)
 
@@ -894,13 +898,15 @@ func PoolStats(c *gin.Context) {
 			"label":        label,
 			"subscription": cd.Subscription,
 			"accountCount": cd.AccountCount,
-			"count":        cd.Count,
+			"total":        cd.Total,
+			"used":         cd.Used,
+			"unused":       cd.Unused,
 		})
 	}
 	// 按数量降序，数量相同按名称升序排序。
 	sort.SliceStable(cardDistResults, func(i, j int) bool {
-		ci, _ := cardDistResults[i]["count"].(int64)
-		cj, _ := cardDistResults[j]["count"].(int64)
+		ci, _ := cardDistResults[i]["total"].(int64)
+		cj, _ := cardDistResults[j]["total"].(int64)
 		if ci != cj {
 			return ci > cj
 		}
