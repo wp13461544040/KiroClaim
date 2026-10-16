@@ -55,6 +55,7 @@
         <div class="nav-item" data-tab="assigned" title="已分配" onclick="switchTab('assigned', this)"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M16 11l2 2 4-4"></path></svg></span><span class="nav-label">已分配</span></div>
         <div class="nav-item" data-tab="cards" title="卡密管理" onclick="switchTab('cards', this)"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path><path d="M13 5v2"></path><path d="M13 17v2"></path><path d="M13 11v2"></path></svg></span><span class="nav-label">卡密管理</span></div>
         <div class="nav-item" data-tab="logs" title="操作日志" onclick="switchTab('logs', this)"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg></span><span class="nav-label">操作日志</span></div>
+        <div class="nav-item" data-tab="commerce" title="商城管理" onclick="openCommerceTab('commerce-orders', this)"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 2 L7 7 L22 7 L20 18 L10 18"></path><circle cx="10" cy="21" r="1"></circle><circle cx="18" cy="21" r="1"></circle></svg></span><span class="nav-label">商城管理</span></div>
         <div class="nav-item" data-tab="settings" title="系统设置" onclick="switchTab('settings', this)"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5z"></path><path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.08 1.65V21a2 2 0 0 1-4 0v-.09A1.8 1.8 0 0 0 8.8 19.26a1.8 1.8 0 0 0-1.98.36l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.8 1.8 0 0 0 4.35 15a1.8 1.8 0 0 0-1.65-1.08H2.6a2 2 0 0 1 0-4h.09A1.8 1.8 0 0 0 4.35 8a1.8 1.8 0 0 0-.36-1.98l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.8 1.8 0 0 0 8.8 3.55 1.8 1.8 0 0 0 9.88 1.9V1.8a2 2 0 0 1 4 0v.09a1.8 1.8 0 0 0 1.08 1.65 1.8 1.8 0 0 0 1.98-.36l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.8 1.8 0 0 0 19.4 8c.17.63.66 1.08 1.25 1.08h.75a2 2 0 0 1 0 4h-.75A1.8 1.8 0 0 0 19.4 15z"></path></svg></span><span class="nav-label">系统设置</span></div>
       </nav>
       <div class="sidebar-footer">
@@ -639,6 +640,21 @@
             <div id="settingsResult" style="margin-top:18px"></div>
           </div>
         </div>
+      </div>
+
+      <!-- 商城订单面板 -->
+      <div class="tab-panel" id="tab-commerce-orders">
+        <div id="commerceOrdersMount"></div>
+      </div>
+
+      <!-- 支付渠道面板 -->
+      <div class="tab-panel" id="tab-commerce-channels">
+        <div id="commerceChannelsMount"></div>
+      </div>
+
+      <!-- 商城设置面板 -->
+      <div class="tab-panel" id="tab-commerce-settings">
+        <div id="commerceSettingsMount"></div>
       </div>
 
     </div>

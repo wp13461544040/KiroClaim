@@ -190,6 +190,12 @@ function drawCardDistributionChart(distribution) {
   const topDist = distribution.slice(0, 10);
   const maxTotal = Math.max(...topDist.map(d => d.total || 0));
 
+  // 防止 maxTotal 为 0 导致除以零
+  if (maxTotal === 0) {
+    canvas.innerHTML = emptyChart();
+    return;
+  }
+
   const barHtml = topDist.map((d, idx) => {
     const total = d.total || 0;
     const used = d.used || 0;
@@ -198,14 +204,19 @@ function drawCardDistributionChart(distribution) {
     const usedPercent = maxTotal > 0 ? (used / maxTotal * 100) : 0;
     const unusedPercent = maxTotal > 0 ? (unused / maxTotal * 100) : 0;
     
+    // 确保最小可见宽度，避免有数据但完全看不见
+    const minVisiblePercent = 2;
+    const usedWidth = used > 0 ? Math.max(usedPercent, minVisiblePercent) : 0;
+    const unusedWidth = unused > 0 ? Math.max(unusedPercent, minVisiblePercent) : 0;
+    
     return `
       <div class="cute-bar-row">
         <div class="cute-bar-label" title="${d.label}">${d.label}</div>
         <div class="cute-bar-stack-wrapper">
-          <div class="cute-bar-segment used" style="width:${usedPercent}%">
+          <div class="cute-bar-segment used" style="width:${usedWidth}%">
             ${used > 0 ? `<span class="cute-bar-segment-value">${used}</span>` : ''}
           </div>
-          <div class="cute-bar-segment unused" style="width:${unusedPercent}%">
+          <div class="cute-bar-segment unused" style="width:${unusedWidth}%">
             ${unused > 0 ? `<span class="cute-bar-segment-value">${unused}</span>` : ''}
           </div>
         </div>
