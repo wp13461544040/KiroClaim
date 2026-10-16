@@ -2708,10 +2708,93 @@ textarea.k-input::-webkit-scrollbar-corner {
   border-bottom: none;
 }
 
-/* 卡密分布图表样式 */
-.cute-bar-chart {
+/* 卡密分布图表样式（列表样式，对齐卡密管理的筛选器） */
+.k-card-dist-list {
   display: flex;
   flex-direction: column;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.k-card-dist-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--bg-subtle);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  transition: all 0.2s ease;
+}
+
+.k-card-dist-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.k-card-dist-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  flex-shrink: 0;
+  min-width: 120px;
+}
+
+.k-card-dist-stats {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.k-card-dist-stat {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.k-dist-label {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.k-dist-value {
+  font-weight: 600;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.k-card-dist-stat.unused .k-dist-value {
+  color: #10b981;
+}
+
+.k-card-dist-stat.used .k-dist-value {
+  color: #f59e0b;
+}
+
+.k-card-dist-stat.total .k-dist-value {
+  color: var(--text);
+}
+
+@media (max-width: 768px) {
+  .k-card-dist-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .k-card-dist-label {
+    min-width: unset;
+  }
+  
+  .k-card-dist-stats {
+    width: 100%;
+    justify-content: space-between;
+    gap: 12px;
+  }
+}
   gap: 12px;
   padding: 12px 0;
 }

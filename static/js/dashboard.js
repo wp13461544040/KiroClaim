@@ -176,7 +176,7 @@ function drawAccountStatusChart(statusCount) {
   `;
 }
 
-// 绘制卡密分布图表
+// 绘制卡密分布图表（列表样式，对齐卡密管理页面的筛选器）
 function drawCardDistributionChart(distribution) {
   const canvas = document.getElementById('cardDistributionChart');
   if (!canvas) return;
@@ -196,48 +196,36 @@ function drawCardDistributionChart(distribution) {
     return;
   }
 
-  const barHtml = topDist.map((d, idx) => {
+  // 使用类似卡密管理页面的列表项样式
+  const listHtml = topDist.map((d, idx) => {
     const total = d.total || 0;
     const used = d.used || 0;
     const unused = d.unused || 0;
     
-    const usedPercent = maxTotal > 0 ? (used / maxTotal * 100) : 0;
-    const unusedPercent = maxTotal > 0 ? (unused / maxTotal * 100) : 0;
-    
-    // 确保最小可见宽度，避免有数据但完全看不见
-    const minVisiblePercent = 2;
-    const usedWidth = used > 0 ? Math.max(usedPercent, minVisiblePercent) : 0;
-    const unusedWidth = unused > 0 ? Math.max(unusedPercent, minVisiblePercent) : 0;
-    
     return `
-      <div class="cute-bar-row">
-        <div class="cute-bar-label" title="${d.label}">${d.label}</div>
-        <div class="cute-bar-stack-wrapper">
-          <div class="cute-bar-segment used" style="width:${usedWidth}%">
-            ${used > 0 ? `<span class="cute-bar-segment-value">${used}</span>` : ''}
-          </div>
-          <div class="cute-bar-segment unused" style="width:${unusedWidth}%">
-            ${unused > 0 ? `<span class="cute-bar-segment-value">${unused}</span>` : ''}
-          </div>
+      <div class="k-card-dist-item">
+        <div class="k-card-dist-label">${d.label}</div>
+        <div class="k-card-dist-stats">
+          <span class="k-card-dist-stat unused">
+            <span class="k-dist-label">未使用</span>
+            <span class="k-dist-value">${unused}</span>
+          </span>
+          <span class="k-card-dist-stat used">
+            <span class="k-dist-label">已使用</span>
+            <span class="k-dist-value">${used}</span>
+          </span>
+          <span class="k-card-dist-stat total">
+            <span class="k-dist-label">总计</span>
+            <span class="k-dist-value">${total}</span>
+          </span>
         </div>
-        <div class="cute-bar-total">${total}</div>
       </div>
     `;
   }).join('');
 
   canvas.innerHTML = `
-    <div class="cute-bar-chart">
-      <div class="cute-bar-legend">
-        <div class="cute-legend-item">
-          <span class="cute-legend-dot used"></span>
-          <span class="cute-legend-label">已使用</span>
-        </div>
-        <div class="cute-legend-item">
-          <span class="cute-legend-dot unused"></span>
-          <span class="cute-legend-label">未使用</span>
-        </div>
-      </div>
-      ${barHtml}
+    <div class="k-card-dist-list">
+      ${listHtml}
     </div>
   `;
 }
