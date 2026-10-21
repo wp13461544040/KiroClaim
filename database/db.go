@@ -138,7 +138,7 @@ func Init(dsn string) {
 	}
 
 	loadCryptoKeyFromKV()
-	migrateEncryptedCredentials()
+	// migrateEncryptedCredentials() // 已完成一次性迁移，注释以避免启动时加载所有账号
 
 	log.Println("数据库初始化完成")
 }
