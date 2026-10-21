@@ -2708,91 +2708,112 @@ textarea.k-input::-webkit-scrollbar-corner {
   border-bottom: none;
 }
 
-/* 卡密分布图表样式（列表样式，对齐卡密管理的筛选器） */
-.k-card-dist-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px 0;
+/* 卡密分布表格样式 */
+.k-card-dist-table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
-.k-card-dist-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  background: var(--bg-subtle);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  transition: all 0.2s ease;
-}
-
-.k-card-dist-item:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-hover);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-
-.k-card-dist-label {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text);
-  flex-shrink: 0;
-  min-width: 120px;
-}
-
-.k-card-dist-stats {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.k-card-dist-stat {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.k-card-dist-table {
+  width: 100%;
+  border-collapse: collapse;
   font-size: 13px;
+  background: var(--bg);
 }
 
-.k-dist-label {
-  color: var(--text-muted);
-  font-size: 12px;
+.k-card-dist-table th,
+.k-card-dist-table td {
+  padding: 12px 16px;
+  text-align: center;
+  border: 1px solid var(--border);
 }
 
-.k-dist-value {
+/* 左上角单元格 */
+.k-dist-th-corner {
+  background: var(--bg-subtle);
   font-weight: 600;
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  text-align: left;
+  padding-left: 20px;
 }
 
-.k-card-dist-stat.unused .k-dist-value {
-  color: #10b981;
-}
-
-.k-card-dist-stat.used .k-dist-value {
-  color: #f59e0b;
-}
-
-.k-card-dist-stat.total .k-dist-value {
+/* 卡密类型表头（每个卡密类型为一列） */
+.k-dist-th-card {
+  background: var(--bg-subtle);
+  font-weight: 600;
   color: var(--text);
+  white-space: nowrap;
+  min-width: 100px;
 }
 
+/* 统计类型行表头（未使用、已使用、总计） */
+.k-dist-th-row {
+  background: var(--bg-subtle);
+  font-weight: 500;
+  color: var(--text-muted);
+  text-align: left;
+  padding-left: 20px;
+  white-space: nowrap;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+
+/* 数据单元格 */
+.k-dist-td-unused {
+  background: var(--bg);
+  color: #10b981;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.k-dist-td-used {
+  background: var(--bg);
+  color: #f59e0b;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.k-dist-td-total {
+  background: var(--bg);
+  color: #3b82f6;
+  font-weight: 700;
+  font-size: 15px;
+}
+
+/* 鼠标悬停效果 */
+.k-card-dist-table tbody tr:hover td {
+  background: var(--bg-hover);
+}
+
+/* 响应式：小屏幕 */
 @media (max-width: 768px) {
-  .k-card-dist-item {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
+  .k-card-dist-table {
+    font-size: 12px;
   }
   
-  .k-card-dist-label {
-    min-width: unset;
+  .k-card-dist-table th,
+  .k-card-dist-table td {
+    padding: 8px 12px;
   }
   
-  .k-card-dist-stats {
-    width: 100%;
-    justify-content: space-between;
-    gap: 12px;
+  .k-dist-th-corner,
+  .k-dist-th-row {
+    padding-left: 12px;
+  }
+  
+  .k-dist-th-card {
+    min-width: 80px;
+    font-size: 11px;
+  }
+  
+  .k-dist-td-unused,
+  .k-dist-td-used,
+  .k-dist-td-total {
+    font-size: 13px;
   }
 }
   gap: 12px;

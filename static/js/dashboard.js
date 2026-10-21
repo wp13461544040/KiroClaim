@@ -176,7 +176,7 @@ function drawAccountStatusChart(statusCount) {
   `;
 }
 
-// 绘制卡密分布图表（列表样式，对齐卡密管理页面的筛选器）
+// 绘制卡密分布图表（表格模式，每个卡密类型为一列）
 function drawCardDistributionChart(distribution) {
   const canvas = document.getElementById('cardDistributionChart');
   if (!canvas) return;
@@ -186,46 +186,43 @@ function drawCardDistributionChart(distribution) {
     return;
   }
 
-  // 取前10个最多的卡密类型
-  const topDist = distribution.slice(0, 10);
-  const maxTotal = Math.max(...topDist.map(d => d.total || 0));
+  // 按 total 降序排序，取前 10 个
+  const sortedDist = [...distribution].sort((a, b) => (b.total || 0) - (a.total || 0)).slice(0, 10);
 
-  // 防止 maxTotal 为 0 导致除以零
-  if (maxTotal === 0) {
-    canvas.innerHTML = emptyChart();
-    return;
-  }
+  // 构建表头：每个卡密类型为一列
+  const theadHtml = `
+    <thead>
+      <tr>
+        <th class="k-dist-th-corner">类型</th>
+        ${sortedDist.map(d => `<th class="k-dist-th-card">${d.label || '未知'}</th>`).join('')}
+      </tr>
+    </thead>
+  `;
 
-  // 使用类似卡密管理页面的列表项样式
-  const listHtml = topDist.map((d, idx) => {
-    const total = d.total || 0;
-    const used = d.used || 0;
-    const unused = d.unused || 0;
-    
-    return `
-      <div class="k-card-dist-item">
-        <div class="k-card-dist-label">${d.label}</div>
-        <div class="k-card-dist-stats">
-          <span class="k-card-dist-stat unused">
-            <span class="k-dist-label">未使用</span>
-            <span class="k-dist-value">${unused}</span>
-          </span>
-          <span class="k-card-dist-stat used">
-            <span class="k-dist-label">已使用</span>
-            <span class="k-dist-value">${used}</span>
-          </span>
-          <span class="k-card-dist-stat total">
-            <span class="k-dist-label">总计</span>
-            <span class="k-dist-value">${total}</span>
-          </span>
-        </div>
-      </div>
-    `;
-  }).join('');
+  // 构建表体：三行（未使用、已使用、总计）
+  const tbodyHtml = `
+    <tbody>
+      <tr>
+        <th class="k-dist-th-row">未使用</th>
+        ${sortedDist.map(d => `<td class="k-dist-td-unused">${d.unused || 0}</td>`).join('')}
+      </tr>
+      <tr>
+        <th class="k-dist-th-row">已使用</th>
+        ${sortedDist.map(d => `<td class="k-dist-td-used">${d.used || 0}</td>`).join('')}
+      </tr>
+      <tr>
+        <th class="k-dist-th-row">总计</th>
+        ${sortedDist.map(d => `<td class="k-dist-td-total">${d.total || 0}</td>`).join('')}
+      </tr>
+    </tbody>
+  `;
 
   canvas.innerHTML = `
-    <div class="k-card-dist-list">
-      ${listHtml}
+    <div class="k-card-dist-table-wrapper">
+      <table class="k-card-dist-table">
+        ${theadHtml}
+        ${tbodyHtml}
+      </table>
     </div>
   `;
 }
