@@ -220,4 +220,5 @@ func registerPageRoutes(r gin.IRoutes) {
 	r.GET("/admin", func(c *gin.Context) { c.File("./static/index.html") })
 	r.GET("/setup", func(c *gin.Context) { c.File("./static/setup.html") })
 	r.GET("/redeem", func(c *gin.Context) { c.File("./static/redeem.html") })
+	r.GET("/subtool", func(c *gin.Context) { c.File("./static/subtool.html") })
 }

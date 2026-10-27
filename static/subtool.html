@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>订阅获取工具</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="alternate icon" href="/static/favicon.ico">
+  <style>
+    @font-face {
+      font-family: "Fusion Pixel";
+      src: url("/static/font/fusion-pixel.otf") format("opentype"),
+           url("/static/font/fusion-pixel.ttf") format("truetype");
+      font-display: swap;
+    }
+    :root {
+      --bg-page: #fafafa;
+      --bg-surface: #ffffff;
+      --bg-subtle: #f4f4f5;
+      --border: #e4e4e7;
+      --border-hover: #d4d4d8;
+      --text-main: #18181b;
+      --text-muted: #52525b;
+      --text-subtle: #71717a;
+      --text-disabled: #a1a1aa;
+      --primary: #18181b;
+      --primary-hover: #27272a;
+      --danger: #dc2626;
+      --success: #16a34a;
+      --warning: #d97706;
+      --radius-sm: 6px;
+      --radius: 8px;
+      --radius-lg: 12px;
+      --ease: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0;
+        font-family: "Fusion Pixel", -apple-system, BlinkMacSystemFont, "Inter",
+          "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased; }
+    html, body { height: 100%; }
+    body {
+      background: var(--bg-page);
+      color: var(--text-main);
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+      padding: 40px 16px;
+    }
+
+    /* ── layout ── */
+    .wrap { max-width: 1000px; margin: 0 auto; animation: fadeIn 0.4s var(--ease); }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+
+    .page-header { text-align: center; margin-bottom: 32px; }
+    .page-header h1 { font-size: 24px; font-weight: 700; }
+    .page-header p  { color: var(--text-muted); margin-top: 6px; font-size: 13px; }
+
+    /* ── card ── */
+    .card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+    }
+
+    /* ── loading / disabled screens ── */
+    .center-screen {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 60vh; gap: 16px;
+    }
+    .spinner-ring {
+      width: 32px; height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .alert {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px; border-radius: var(--radius);
+      font-size: 13px;
+    }
+    .alert-warn { background: #fef9c3; color: #713f12; border: 1px solid #fde047; }
+
+    /* ── input area ── */
+    .input-header {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;
+    }
+    .input-header .label { font-weight: 600; }
+    .input-header .hint  { color: var(--text-muted); font-size: 12px; }
+    .input-header .spacer { flex: 1; }
+
+    textarea {
+      width: 100%; border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 10px 12px; font-family: monospace; font-size: 12px; line-height: 1.6;
+      resize: vertical; background: var(--bg-subtle); color: var(--text-main);
+      outline: none; transition: border-color 0.15s;
+    }
+    textarea:focus { border-color: var(--primary); background: var(--bg-surface); }
+
+    .input-footer { display: flex; justify-content: flex-end; margin-top: 12px; }
+
+    /* ── buttons ── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 14px; border-radius: var(--radius-sm);
+      font-size: 13px; font-weight: 500; cursor: pointer;
+      border: 1px solid transparent; transition: background 0.15s, opacity 0.15s;
+      white-space: nowrap;
+    }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-primary   { background: var(--primary); color: #fff; }
+    .btn-primary:not(:disabled):hover { background: var(--primary-hover); }
+    .btn-secondary { background: var(--bg-subtle); color: var(--text-main); border-color: var(--border); }
+    .btn-secondary:not(:disabled):hover { background: var(--border); }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+    /* ── table ── */
+    .table-meta {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;
+    }
+    .table-meta .count     { font-size: 13px; color: var(--text-muted); }
+    .table-meta .stats     { font-size: 12px; color: var(--text-subtle); }
+    .table-meta .spacer    { flex: 1; }
+    .table-meta .btn-group { display: flex; gap: 6px; }
+
+    .tbl-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th {
+      text-align: left; padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-muted); font-weight: 500; white-space: nowrap;
+    }
+    tbody tr:not(:last-child) td { border-bottom: 1px solid var(--bg-subtle); }
+    tbody td { padding: 8px 10px; vertical-align: middle; }
+    tbody tr:hover td { background: var(--bg-subtle); }
+
+    /* ── tags / status ── */
+    .tag {
+      display: inline-block; padding: 2px 8px; border-radius: 20px;
+      font-size: 11px; font-weight: 500; white-space: nowrap;
+    }
+    .tag-blue    { background: #dbeafe; color: #1d4ed8; }
+    .tag-red     { background: #fee2e2; color: #b91c1c; }
+    .tag-error   { background: #fee2e2; color: #b91c1c; cursor: help; }
+    .tag-orange  { background: #fed7aa; color: #c2410c; }
+    .text-muted  { color: var(--text-muted); }
+    .text-success { color: var(--success); }
+
+    .status-row { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+    .dot-spin {
+      width: 12px; height: 12px; border: 2px solid var(--border);
+      border-top-color: #2563eb; border-radius: 50%;
+      animation: spin 0.7s linear infinite; flex-shrink: 0;
+    }
+
+    /* ── select ── */
+    select {
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      padding: 4px 8px; font-size: 12px; background: var(--bg-surface);
+      color: var(--text-main); outline: none; cursor: pointer;
+      max-width: 200px; width: 100%;
+    }
+    select:focus { border-color: var(--primary); }
+
+    /* ── link btn ── */
+    .link-btn {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: none; border: none; padding: 0;
+      font-size: 12px; color: #2563eb; cursor: pointer;
+      text-decoration: underline; text-underline-offset: 2px;
+    }
+    .link-btn:hover { color: #1d4ed8; }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <div class="center-screen">
+    <div class="spinner-ring"></div>
+  </div>
+</div>
+
+<script>
+const BASE = '/subtool'
+
+// ── state ──────────────────────────────────────────────────────────────────
+let accounts = []
+let parsed   = false
+
+// ── api ────────────────────────────────────────────────────────────────────
+async function apiPost(path, body) {
+  const r = await fetch(BASE + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const json = await r.json()
+  if (json.code !== 0) throw new Error(json.message || '请求失败')
+  return json.data
+}
+
+// ── plan helpers ───────────────────────────────────────────────────────────
+function filterPayPlans(plans) {
+  const paid = (plans || []).filter(p => {
+    return !(p.qSubscriptionType || '').toUpperCase().includes('FREE')
+  })
+  return paid.length > 0 ? paid : (plans || [])
+}
+
+function pickBestPlan(plans) {
+  if (!plans || !plans.length) return { type: '', name: '' }
+  const paid = filterPayPlans(plans)
+  const pro  = paid.find(p => {
+    const t = (p.qSubscriptionType || '').toUpperCase()
+    return t.includes('PRO') && !t.includes('PLUS')
+  })
+  const best = pro || paid[0]
+  return { type: best.qSubscriptionType, name: best.name || best.qSubscriptionType }
+}
+
+async function resolvePlans(a) {
+  const d = await apiPost('/plans', {
+    email: a.email, refreshToken: a.refreshToken,
+    clientId: a.clientId, clientSecret: a.clientSecret,
+    region: a.region, provider: a.provider,
+  })
+  const plans = d.plans || []
+  const best  = pickBestPlan(plans)
+  return {
+    status: 'selecting',
+    plans,
+    accessToken: d.accessToken,
+    email: d.email || a.email,
+    currentSubscription: d.currentSubscription || a.currentSubscription || '',
+    selectedPlan: best.type,
+    selectedPlanName: best.name,
+  }
+}
+
+// ── parse & load ───────────────────────────────────────────────────────────
+function parseJson(text) {
+  let arr
+  try { arr = JSON.parse(text) } catch(e) { showToast('JSON 格式错误: ' + e.message); return }
+  if (!Array.isArray(arr)) { showToast('需要 JSON 数组格式'); return }
+  const list = arr.map(item => ({
+    email:         item.email || '',
+    refreshToken:  item.refreshToken || item.refresh_token || '',
+    clientId:      item.clientId   || item.client_id    || '',
+    clientSecret:  item.clientSecret || item.client_secret || '',
+    region:        item.region   || '',
+    provider:      item.provider || '',
+    currentSubscription: item.subscription || '',
+    status: 'fetching',
+  })).filter(a => a.refreshToken)
+
+  if (!list.length) { showToast('未找到有效账号（需含 refreshToken）'); return }
+
+  accounts = list
+  parsed   = true
+  render()
+
+  list.forEach((acc, idx) => {
+    resolvePlans(acc)
+      .then(updates => { patchAccount(idx, updates); render() })
+      .catch(e => {
+        const msg = e instanceof Error ? e.message : String(e)
+        patchAccount(idx, { status: msg.includes('封禁') ? 'suspended' : 'error', error: msg })
+        render()
+      })
+  })
+}
+
+// ── account mutations ──────────────────────────────────────────────────────
+function patchAccount(idx, updates) {
+  accounts[idx] = Object.assign({}, accounts[idx], updates)
+}
+
+function retryFetch(idx) {
+  patchAccount(idx, { status: 'fetching', error: undefined })
+  render()
+  resolvePlans(accounts[idx])
+    .then(updates => { patchAccount(idx, updates); render() })
+    .catch(e => {
+      const msg = e instanceof Error ? e.message : String(e)
+      patchAccount(idx, { status: msg.includes('封禁') ? 'suspended' : 'error', error: msg })
+      render()
+    })
+}
+
+async function createLink(idx) {
+  const a = accounts[idx]
+  patchAccount(idx, { status: 'creating' })
+  render()
+  try {
+    const d = await apiPost('/link', {
+      email: a.email, refreshToken: a.refreshToken,
+      clientId: a.clientId, clientSecret: a.clientSecret,
+      region: a.region, provider: a.provider,
+      accessToken: a.accessToken,
+      subscriptionType: a.selectedPlan,
+    })
+    patchAccount(idx, { status: 'success', link: d.link })
+  } catch(e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    patchAccount(idx, { status: msg.includes('封禁') ? 'suspended' : 'error', error: msg })
+  }
+  render()
+}
+
+async function createAllLinks() {
+  const indices = accounts
+    .map((a, i) => ({ a, i }))
+    .filter(({ a }) => a.status === 'selecting')
+    .map(({ i }) => i)
+  for (const idx of indices) {
+    await createLink(idx)
+  }
+}
+
+function updatePlan(idx, planType, planName) {
+  patchAccount(idx, { selectedPlan: planType, selectedPlanName: planName })
+  // no full re-render needed, just update the stored value
+}
+
+// ── render ─────────────────────────────────────────────────────────────────
+function renderInputScreen() {
+  return `
+  <div class="page-header">
+    <h1>订阅获取工具</h1>
+    <p>粘贴或导入账号 JSON，批量获取 Kiro 订阅链接</p>
+  </div>
+  <div class="card">
+    <div class="input-header">
+      <span class="label">输入账号 JSON</span>
+      <span class="hint">数组格式，每条含 refreshToken 等字段</span>
+      <span class="spacer"></span>
+      <label>
+        <input type="file" id="fileInput" accept=".json" style="display:none" onchange="handleFile(event)">
+        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('fileInput').click()">
+          ⬆ 导入文件
+        </button>
+      </label>
+    </div>
+    <textarea id="jsonText" rows="10"
+      placeholder='[\n  {\n    "refreshToken": "...",\n    "clientId": "...",\n    "clientSecret": "...",\n    "region": "us-east-1"\n  }\n]'
+    ></textarea>
+    <div class="input-footer">
+      <button class="btn btn-primary" id="parseBtn" onclick="onParse()">解析账号</button>
+    </div>
+  </div>`
+}
+
+function renderStatus(a, idx) {
+  switch (a.status) {
+    case 'fetching':
+      return `<span class="status-row"><span class="dot-spin"></span>解析中…</span>`
+    case 'selecting':
+      return `<span class="text-muted" style="font-size:12px">待获取</span>`
+    case 'creating':
+      return `<span class="status-row"><span class="dot-spin"></span>生成中…</span>`
+    case 'success':
+      return `<span class="status-row text-success">✓ 成功</span>`
+    case 'suspended':
+      return `<span class="tag tag-red">账号封禁</span>`
+    case 'error':
+      return `<span class="tag tag-error" title="${escHtml(a.error || '')}">失败</span>`
+    default:
+      return ''
+  }
+}
+
+function renderAction(a, idx) {
+  switch (a.status) {
+    case 'fetching':
+    case 'creating':
+    case 'suspended':
+      return ''
+    case 'selecting':
+      return `<button class="btn btn-primary btn-sm" ${a.selectedPlan ? '' : 'disabled'}
+        onclick="createLink(${idx})">获取链接</button>`
+    case 'success':
+      return `<button class="btn btn-secondary btn-sm" onclick="createLink(${idx})">↻ 重新获取</button>`
+    case 'error':
+      return `<button class="btn btn-secondary btn-sm" onclick="retryFetch(${idx})">重试</button>`
+    default:
+      return ''
+  }
+}
+
+function renderPlanSelect(a, idx) {
+  if (a.status === 'fetching') return ''
+  if (a.status === 'suspended') return `<span class="tag tag-red">封禁</span>`
+  if (!a.plans || !a.plans.length) return `<span class="text-muted" style="font-size:12px">—</span>`
+  const opts = filterPayPlans(a.plans)
+    .map(p => {
+      const label = escHtml(p.name || p.qSubscriptionType)
+      const val   = escHtml(p.qSubscriptionType)
+      const sel   = p.qSubscriptionType === a.selectedPlan ? 'selected' : ''
+      return `<option value="${val}" ${sel}>${label}</option>`
+    }).join('')
+  return `<select onchange="onPlanChange(${idx}, this)">${opts}</select>`
+}
+
+function renderLink(a) {
+  if (a.status !== 'success' || !a.link) return ''
+  return `<button class="link-btn" onclick="window.open(${JSON.stringify(a.link)},'_blank','noopener,noreferrer')">
+    🔗 在浏览器中打开
+  </button>`
+}
+
+function renderTable() {
+  const succ = accounts.filter(a => a.status === 'success').length
+  const fail = accounts.filter(a => a.status === 'error').length
+  const susp = accounts.filter(a => a.status === 'suspended').length
+  const fetc = accounts.filter(a => a.status === 'fetching').length
+  const hasSelecting = accounts.some(a => a.status === 'selecting')
+
+  const rows = accounts.map((a, idx) => `
+    <tr>
+      <td style="color:var(--text-muted);font-size:12px;width:36px">${idx + 1}</td>
+      <td style="font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+        ${a.status === 'fetching'
+          ? `<span class="text-muted">获取中…</span>`
+          : a.email
+            ? escHtml(a.email)
+            : `<span class="text-muted">—</span>`}
+      </td>
+      <td style="width:140px">
+        ${a.status !== 'fetching' && a.currentSubscription
+          ? `<span class="tag tag-blue">${escHtml(a.currentSubscription)}</span>`
+          : a.status !== 'fetching' ? `<span class="text-muted" style="font-size:12px">—</span>` : ''}
+      </td>
+      <td style="width:220px">${renderPlanSelect(a, idx)}</td>
+      <td style="width:110px">${renderStatus(a, idx)}</td>
+      <td>${renderLink(a)}</td>
+      <td style="width:100px">${renderAction(a, idx)}</td>
+    </tr>`).join('')
+
+  return `
+  <div class="page-header">
+    <h1>订阅获取工具</h1>
+    <p>粘贴或导入账号 JSON，批量获取 Kiro 订阅链接</p>
+  </div>
+  <div class="card">
+    <div class="table-meta">
+      <span class="count">${accounts.length} 个账号</span>
+      <span class="stats">· 成功 ${succ} · 失败 ${fail} · 封禁 ${susp} · 解析中 ${fetc}</span>
+      <span class="spacer"></span>
+      <div class="btn-group">
+        <button class="btn btn-secondary btn-sm" onclick="resetToInput()">重新导入</button>
+        <button class="btn btn-primary btn-sm" ${hasSelecting ? '' : 'disabled'}
+          onclick="createAllLinks()">全部获取</button>
+      </div>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th><th>邮箱</th><th>当前订阅</th>
+            <th>选择计划</th><th>状态</th><th>链接</th><th>操作</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>`
+}
+
+function render() {
+  document.getElementById('app').innerHTML =
+    `<div class="wrap">${parsed ? renderTable() : renderInputScreen()}</div>`
+}
+
+// ── event handlers ─────────────────────────────────────────────────────────
+function onParse() {
+  const t = (document.getElementById('jsonText') || {}).value || ''
+  if (t.trim()) parseJson(t.trim())
+}
+
+function handleFile(e) {
+  const file = e.target.files && e.target.files[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = ev => {
+    const ta = document.getElementById('jsonText')
+    if (ta) ta.value = ev.target.result
+  }
+  reader.readAsText(file)
+  e.target.value = ''
+}
+
+function onPlanChange(idx, sel) {
+  const opt = sel.options[sel.selectedIndex]
+  updatePlan(idx, sel.value, opt ? opt.text : sel.value)
+}
+
+function resetToInput() {
+  accounts = []
+  parsed   = false
+  render()
+}
+
+// ── toast ──────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  let t = document.getElementById('_toast')
+  if (!t) {
+    t = document.createElement('div')
+    t.id = '_toast'
+    Object.assign(t.style, {
+      position:'fixed', bottom:'24px', left:'50%', transform:'translateX(-50%)',
+      background:'#18181b', color:'#fff', padding:'10px 18px', borderRadius:'8px',
+      fontSize:'13px', zIndex:'9999', maxWidth:'90vw', textAlign:'center',
+      boxShadow:'0 4px 16px rgba(0,0,0,0.18)',
+    })
+    document.body.appendChild(t)
+  }
+  t.textContent = msg
+  t.style.display = 'block'
+  clearTimeout(t._timer)
+  t._timer = setTimeout(() => { t.style.display = 'none' }, 3500)
+}
+
+// ── util ───────────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;')
+}
+
+// ── boot ───────────────────────────────────────────────────────────────────
+fetch(BASE + '/status')
+  .then(r => r.json())
+  .then(d => {
+    if (!(d.data && d.data.enabled)) {
+      document.getElementById('app').innerHTML = `
+        <div class="center-screen">
+          <h2 style="font-size:20px;font-weight:700">订阅获取工具</h2>
+          <div class="alert alert-warn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+            </svg>
+            该服务暂未对外开放
+          </div>
+        </div>`
+    } else {
+      render()
+    }
+  })
+  .catch(() => {
+    document.getElementById('app').innerHTML = `
+      <div class="center-screen">
+        <div class="alert alert-warn">无法连接到服务器，请稍后重试</div>
+      </div>`
+  })
+</script>
+</body>
+</html>
