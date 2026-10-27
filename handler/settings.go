@@ -1,4 +1,4 @@
-﻿package handler
+package handler
 
 import (
 	"encoding/json"
@@ -54,6 +54,7 @@ type AppSettings struct {
 	CustomerServiceWechat       string
 	AnnouncementText            string
 	CardCopyTemplate            string
+	SubToolEnabled              bool
 }
 
 type storedRuntimeSettings struct {
@@ -90,6 +91,7 @@ type storedRuntimeSettings struct {
 	CustomerServiceWechat       *string `json:"customerServiceWechat,omitempty"`
 	AnnouncementText            *string `json:"announcementText,omitempty"`
 	CardCopyTemplate            *string `json:"cardCopyTemplate,omitempty"`
+	SubToolEnabled              *bool   `json:"subToolEnabled,omitempty"`
 }
 
 var (
@@ -253,6 +255,9 @@ func mergeStoredRuntimeSettings(s *AppSettings, stored storedRuntimeSettings) {
 	if stored.CardCopyTemplate != nil {
 		s.CardCopyTemplate = *stored.CardCopyTemplate
 	}
+	if stored.SubToolEnabled != nil {
+		s.SubToolEnabled = *stored.SubToolEnabled
+	}
 }
 
 func normalizeSettings(s *AppSettings) {
@@ -343,6 +348,7 @@ func persistRuntimeSettings(s AppSettings) error {
 		CustomerServiceWechat:       stringPtr(s.CustomerServiceWechat),
 		AnnouncementText:            stringPtr(s.AnnouncementText),
 		CardCopyTemplate:            stringPtr(s.CardCopyTemplate),
+		SubToolEnabled:              boolPtr(s.SubToolEnabled),
 	}
 	b, err := json.Marshal(payload)
 	if err != nil {
@@ -456,6 +462,7 @@ func AdminSettings(c *gin.Context) {
 			"customerServiceWechat":       s.CustomerServiceWechat,
 			"announcementText":            s.AnnouncementText,
 			"cardCopyTemplate":            s.CardCopyTemplate,
+			"subToolEnabled":              s.SubToolEnabled,
 		},
 	})
 }
@@ -493,6 +500,7 @@ func UpdateAdminSettings(c *gin.Context) {
 		CustomerServiceWechat       string `json:"customerServiceWechat"`
 		AnnouncementText            string `json:"announcementText"`
 		CardCopyTemplate            string `json:"cardCopyTemplate"`
+		SubToolEnabled              bool   `json:"subToolEnabled"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "请求格式错误"})
@@ -601,6 +609,7 @@ func UpdateAdminSettings(c *gin.Context) {
 	s.CustomerServiceWechat = strings.TrimSpace(req.CustomerServiceWechat)
 	s.AnnouncementText = strings.TrimSpace(req.AnnouncementText)
 	s.CardCopyTemplate = strings.TrimSpace(req.CardCopyTemplate)
+	s.SubToolEnabled = req.SubToolEnabled
 	normalizeSettings(&s)
 
 	if s.OpenAPIEnabled && strings.TrimSpace(s.OpenAPIKey) == "" {

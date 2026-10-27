@@ -40,6 +40,7 @@ async function loadSettings() {
   document.getElementById('settingLogMaxAgeDays').value = Number.isFinite(Number(d.logMaxAgeDays)) ? Number(d.logMaxAgeDays) : 30;
   document.getElementById('settingLogCompress').checked = !!d.logCompress;
   document.getElementById('settingAutoUpdateEnabled').checked = !!d.autoUpdateEnabled;
+  document.getElementById('settingSubToolEnabled').checked = !!d.subToolEnabled;
   document.getElementById('settingCustomerServiceWechat').value = d.customerServiceWechat || '';
   document.getElementById('settingAnnouncementText').value = d.announcementText || '';
   document.getElementById('settingCardCopyTemplate').value = d.cardCopyTemplate || '';
@@ -175,7 +176,8 @@ async function saveSettings() {
     cardCopyTemplate: document.getElementById('settingCardCopyTemplate').value.trim(),
     logMaxAgeDays: readIntSetting('settingLogMaxAgeDays', 30),
     logCompress: document.getElementById('settingLogCompress').checked,
-    autoUpdateEnabled: document.getElementById('settingAutoUpdateEnabled').checked
+    autoUpdateEnabled: document.getElementById('settingAutoUpdateEnabled').checked,
+    subToolEnabled: document.getElementById('settingSubToolEnabled').checked
   };
   var result = document.getElementById('settingsResult');
   if (result) result.innerHTML = '<div style="color:var(--text-muted);font-size:13px">正在保存...</div>';

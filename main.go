@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"context"
@@ -117,6 +117,14 @@ func main() {
 		openapi.POST("/accounts", handler.OpenAPIImportAccounts)
 		openapi.GET("/accounts/import/:taskId", handler.OpenAPIImportStatus)
 		openapi.GET("/stock", handler.OpenAPIStock)
+	}
+
+	// 订阅工具公开端点（ShareRateLimit 限流，无需鉴权）
+	subtool := r.Group("/subtool", middleware.ShareRateLimit())
+	{
+		subtool.GET("/status", handler.SubToolGetStatus)
+		subtool.POST("/plans", handler.SubToolGetPlans)
+		subtool.POST("/link", handler.SubToolCreateLink)
 	}
 
 	admin := r.Group("/admin", middleware.AdminAuth())
