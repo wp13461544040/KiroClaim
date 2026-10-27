@@ -12,6 +12,19 @@ function healthBadge(status) {
   return '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:8px;background:#10b981;border-radius:50%"></span>正常</span>';
 }
 
+// 账号健康状态（列表徽章、列表筛选、概览「账号状态」共用同一口径）：
+//   1. 封禁优先：status = suspended
+//   2. 额度已用：未封禁，且用过额度（credit_used > 0）或数据库状态为 used
+//   3. 正常：其余账号
+// 后端 handler/admin.go 的 ListAccounts 筛选与 PoolStats 统计必须与此保持一致。
+function accountHealthStatus(account) {
+  if (!account) return 'active';
+  if (account.Status === 'suspended') return 'suspended';
+  if (account.Status === 'used') return 'used';
+  if (Number(account.CreditUsed) > 0) return 'used';
+  return 'active';
+}
+
 // 订阅级别标签：FREE / PRO / PRO+ / POWER，输入可能是 "KIRO FREE" / "Pro" 等
 function subscriptionBadge(sub) {
   if (!sub) return '<span style="color:#a1a1aa">-</span>';

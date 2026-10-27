@@ -1,4 +1,4 @@
-﻿package handler
+package handler
 
 import (
 	"fmt"
@@ -426,6 +426,31 @@ func processImport(taskID string, accounts []map[string]interface{}) {
 	})
 }
 
+// applyHealthStatusFilter 按「健康状态」过滤账号，语义与前端 accountHealthStatus 一致：
+//   - active（正常）：未封禁、未用过额度，且不是历史遗留的 used 状态
+//   - used（额度已用）：未封禁，且用过额度（credit_used > 0）或数据库状态为 used
+//   - suspended（已封禁）：数据库状态为 suspended
+//
+// 列表、导出等入口统一调用这里，避免各处再写一套 SQL 导致口径分叉。
+func applyHealthStatusFilter(q *gorm.DB, statusFilter string) *gorm.DB {
+	switch statusFilter {
+	case string(model.AccountStatusActive):
+		return q.Where("status <> ? AND status <> ?",
+			model.AccountStatusSuspended, model.AccountStatusUsed).
+			Where("COALESCE(credit_used, 0) <= ?", 0)
+	case string(model.AccountStatusUsed):
+		return q.Where("status <> ?", model.AccountStatusSuspended).
+			Where("(status = ? OR COALESCE(credit_used, 0) > ?)",
+				model.AccountStatusUsed, 0)
+	case string(model.AccountStatusSuspended):
+		return q.Where("status = ?", model.AccountStatusSuspended)
+	case "":
+		return q
+	default:
+		return q.Where("status = ?", statusFilter)
+	}
+}
+
 // GET /admin/accounts?page=1&size=20&status=active&used=false&keyword=xxx&subscription=KIRO%20FREE
 func ListAccounts(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
@@ -448,7 +473,7 @@ func ListAccounts(c *gin.Context) {
 		size = 1000
 	}
 	var total int64
-	
+
 	// 列表专用结构，只查询展示需要的列，避免加载 token 等大字段。
 	// 字段名与 model.Account 保持一致，序列化后的 JSON key 不变，前端无需调整。
 	type AccountListItem struct {
@@ -465,7 +490,7 @@ func ListAccounts(c *gin.Context) {
 		Region        string
 		LastCheckedAt *time.Time
 	}
-	
+
 	var accounts []AccountListItem
 	q := database.DB.Model(&model.Account{}).Select(
 		"id", "email", "status", "subscription", "credit_used", "credit_limit",
@@ -473,18 +498,23 @@ func ListAccounts(c *gin.Context) {
 	)
 
 	// 按健康状态筛选。
-	if statusFilter != "" {
-		q = q.Where("status = ?", statusFilter)
-	}
+	//
+	// 这里不能直接 status = ?。健康状态是「数据库状态 + 额度用量」共同推导出来的，
+	// 与列表徽章、概览「账号状态」必须共用同一口径（前端 accountHealthStatus）。
+	// 库存模式下用过额度的账号仍保留 status = active，若直接按 status 查，
+	// 列表上显示「额度已用」的账号会被「正常」筛选错误地带出来。
+	q = applyHealthStatusFilter(q, statusFilter)
 	// 按使用状态筛选。
 	if usedFilter == "true" {
 		q = q.Where("used = ?", true)
 	} else if usedFilter == "false" {
 		q = q.Where("used = ?", false)
 	}
-	// 按额度是否使用筛选（credit_exhausted=true 表示额度已使用，只要 credit_used > 0 就算）
+	// 兼容旧参数 credit_exhausted=true：含义是「用过额度」，与 used 状态筛选保持一致。
+	// 前端已改用 status=used，保留此参数只为不破坏可能仍在调用的外部脚本。
 	if creditExhausted == "true" {
-		q = q.Where("credit_used > 0")
+		q = q.Where("status <> ?", model.AccountStatusSuspended).
+			Where("COALESCE(credit_used, 0) > ?", 0)
 	}
 	// 按订阅筛选。
 	if subscriptionFilter != "" {
@@ -775,7 +805,7 @@ func RestoreCreditUsedAccounts(c *gin.Context) {
 	}
 
 	// 重新计算 cutoff 并重查，避免预览与执行之间隔得太久导致范围漂移
-	result := restoreCreditUsedAccountsQuery(time.Now().Add(-5*time.Minute)).
+	result := restoreCreditUsedAccountsQuery(time.Now().Add(-5 * time.Minute)).
 		Updates(map[string]interface{}{"used": false, "used_at": nil})
 	if result.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "回迁失败: " + result.Error.Error()})
@@ -788,42 +818,61 @@ func RestoreCreditUsedAccounts(c *gin.Context) {
 
 // GET /admin/pool/stats
 func PoolStats(c *gin.Context) {
-	// 账号统计：单次 GROUP BY 查询替代多次 COUNT。
-	type statusCount struct {
-		Status string
-		Used   bool
-		Count  int64
+	// 账号统计：单次 GROUP BY 同时算出「账号池 / 已分配」两栏的健康状态，
+	// 避免多次 COUNT 之间口径漂移，也避免把全表读进内存。
+	//
+	// 健康状态口径与账号池、已分配列表的徽章和筛选完全一致（前端 accountHealthStatus）：
+	//   - suspended：数据库 status 为 suspended
+	//   - used：未封禁，且数据库 status 为 used 或 credit_used > 0（用过额度即算）
+	//   - active：其余账号（未封禁且未用过额度）
+	//
+	// 用 COALESCE 兜底 NULL，保证 active + used + suspended 恒等于该栏 total。
+	// 封禁优先：封禁账号即使用过额度也只计入 suspended，不重复计数。
+	type accountStatusRow struct {
+		Used        bool
+		Total       int64
+		ActiveCount int64
+		UsedCount   int64
+		Suspended   int64
 	}
-	var statusCounts []statusCount
-	database.DB.Model(&model.Account{}).Select("status, used, count(*) as count").Group("status, used").Find(&statusCounts)
+	var statusRows []accountStatusRow
+	database.DB.Model(&model.Account{}).
+		Select("used, "+
+			"COUNT(*) AS total, "+
+			"SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS suspended, "+
+			"SUM(CASE WHEN status <> ? AND (status = ? OR COALESCE(credit_used, 0) > 0) THEN 1 ELSE 0 END) AS used_count, "+
+			"SUM(CASE WHEN status <> ? AND status <> ? AND COALESCE(credit_used, 0) <= 0 THEN 1 ELSE 0 END) AS active_count",
+			model.AccountStatusSuspended,
+			model.AccountStatusSuspended, model.AccountStatusUsed,
+			model.AccountStatusSuspended, model.AccountStatusUsed).
+		Group("used").
+		Scan(&statusRows)
 
+	type statusBucket struct {
+		Total     int64 `json:"total"`
+		Active    int64 `json:"active"`
+		Used      int64 `json:"used"`
+		Suspended int64 `json:"suspended"`
+	}
+	poolStatus := statusBucket{}
+	assignedStatus := statusBucket{}
 	var total, unused, used int64
-	for _, sc := range statusCounts {
-		total += sc.Count
-		if sc.Used {
-			used += sc.Count
+	for _, row := range statusRows {
+		total += row.Total
+		if row.Used {
+			used += row.Total
+			assignedStatus.Total += row.Total
+			assignedStatus.Active += row.ActiveCount
+			assignedStatus.Used += row.UsedCount
+			assignedStatus.Suspended += row.Suspended
 		} else {
-			unused += sc.Count
+			unused += row.Total
+			poolStatus.Total += row.Total
+			poolStatus.Active += row.ActiveCount
+			poolStatus.Used += row.UsedCount
+			poolStatus.Suspended += row.Suspended
 		}
 	}
-
-	// 健康状态统计（与前端展示口径一致）：
-	// 1. suspended: 已封禁账号
-	// 2. used: 额度已用完且未封禁的账号（前端计算状态）
-	// 3. active: 正常账号（既未封禁也未用完额度）
-	var statusSuspended int64
-	database.DB.Model(&model.Account{}).
-		Where("status = ?", model.AccountStatusSuspended).
-		Count(&statusSuspended)
-
-	var statusUsed int64
-	database.DB.Model(&model.Account{}).
-		Where("credit_limit > 0 AND credit_used >= credit_limit").
-		Where("status != ?", model.AccountStatusSuspended).
-		Count(&statusUsed)
-
-	// active = 总数 - 已暂停 - 额度已用
-	statusActive := total - statusSuspended - statusUsed
 
 	// 可用账号 = 真正能被派发出去的账号，条件与 popAccount 的候选查询保持一致：
 	// 未分配 且 状态正常 且 额度一点没动过 且 额度未耗尽。
@@ -881,8 +930,8 @@ func PoolStats(c *gin.Context) {
 	}
 	var cardDists []cardDistribution
 	database.DB.Model(&model.Card{}).
-		Select("subscription, account_count, COUNT(*) as count, "+
-			"SUM(CASE WHEN used_at IS NOT NULL THEN 1 ELSE 0 END) as used_count, "+
+		Select("subscription, account_count, COUNT(*) as count, " +
+			"SUM(CASE WHEN used_at IS NOT NULL THEN 1 ELSE 0 END) as used_count, " +
 			"SUM(CASE WHEN used_at IS NULL THEN 1 ELSE 0 END) as unused_count").
 		Group("subscription, account_count").
 		Find(&cardDists)
@@ -936,10 +985,16 @@ func PoolStats(c *gin.Context) {
 			"unused":    unused,
 			"used":      used,
 			"available": available,
+			// 账号池（未分配）/ 已分配 两栏健康状态，与对应列表的筛选结果一一对应。
+			"statusGroups": gin.H{
+				"pool":     poolStatus,
+				"assigned": assignedStatus,
+			},
+			// 全部账号的健康状态合计，保留给旧调用方，口径与列表一致。
 			"status": gin.H{
-				"active":    statusActive,
-				"suspended": statusSuspended,
-				"used":      statusUsed,
+				"active":    poolStatus.Active + assignedStatus.Active,
+				"suspended": poolStatus.Suspended + assignedStatus.Suspended,
+				"used":      poolStatus.Used + assignedStatus.Used,
 			},
 			"subscriptions": subscriptionDist,
 		},

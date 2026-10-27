@@ -57,20 +57,25 @@ async function loadStats() {
   }
 
   // 更新核心指标
-  document.getElementById('statAccTotal').textContent = r.data.accounts.total;
-  document.getElementById('statAccUnused').textContent = r.data.accounts.available || r.data.accounts.unused;
-  document.getElementById('statCardUnused').textContent = r.data.cards.unused;
+  var accounts = r.data.accounts || {};
+  var cards = r.data.cards || {};
+  document.getElementById('statAccTotal').textContent = accounts.total || 0;
+  // 注意不能用 `available || unused`：可用账号为 0 时会被当成假值，
+  // 错误地回退成账号池总数，导致概览显示的「可用账号」比实际能发货的多。
+  document.getElementById('statAccUnused').textContent =
+    accounts.available != null ? accounts.available : (accounts.unused || 0);
+  document.getElementById('statCardUnused').textContent = cards.unused || 0;
 
   // 今日统计
   var today = r.data.today || {};
   document.getElementById('statTodayActivate').textContent = today.activate || 0;
 
-  // 账号状态统计（三态）- 直接传递给图表,不更新独立元素
-  const statusCount = r.data.accounts.status || { active: 0, used: 0, suspended: 0 };
-  drawAccountStatusChart(statusCount);
+  // 账号状态统计：账号池 / 已分配分栏，口径与两个列表的健康状态筛选一致
+  const statusGroups = accounts.statusGroups || {};
+  drawAccountStatusChart(statusGroups);
 
   // 卡密分布统计
-  const cardDist = r.data.cards.distribution || [];
+  const cardDist = cards.distribution || [];
   drawCardDistributionChart(cardDist);
 
   // 加载最近活动
@@ -81,99 +86,101 @@ function emptyChart() {
   return '<div class="cute-empty-chart">暂无数据</div>';
 }
 
-function drawAccountStatusChart(statusCount) {
+// 账号状态图表：账号池（未分配）与已分配分栏展示。
+//
+// 数字与两个列表「健康状态」筛选的结果一一对应：
+//   - 正常：未封禁且没用过额度
+//   - 额度已用：未封禁且用过额度（credit_used > 0），封禁优先
+//   - 已封禁：status = suspended
+// 三项之和恒等于该栏账号总数，避免概览与列表数量打架。
+//
+// 健康率 = 非封禁账号 / 总账号，即（正常 + 额度已用）/ 总数。
+// 额度已用的账号只是不能发货，仍然不是封禁号，所以必须计入健康率。
+function drawAccountStatusChart(statusGroups) {
   const canvas = document.getElementById('accountStatusChart');
   if (!canvas) return;
 
-  const active = Math.max(0, statusCount.active || 0);
-  const used = Math.max(0, statusCount.used || 0);
-  const suspended = Math.max(0, statusCount.suspended || 0);
-  const total = active + used + suspended;
+  const groups = statusGroups || {};
+  const pool = normalizeStatusGroup(groups.pool);
+  const assigned = normalizeStatusGroup(groups.assigned);
 
-  if (total === 0) {
+  const grandTotal = pool.total + assigned.total;
+  if (grandTotal === 0) {
     canvas.innerHTML = emptyChart();
     return;
   }
 
-  // 计算健康率（正常账号占比）
-  const healthPct = active / total * 100;
-  const R = 64;
-  const C = 2 * Math.PI * R;
-  const activeLen = (active / total) * C;
-  const usedLen = (used / total) * C;
-  const suspendedLen = (suspended / total) * C;
-  const pctLabel = healthPct >= 99.95 ? '100' : healthPct.toFixed(healthPct >= 10 ? 1 : 2);
+  // 全部账号的健康率：非封禁 / 总账号
+  const nonSuspended = grandTotal - pool.suspended - assigned.suspended;
 
-  canvas.innerHTML = `
-    <div class="cute-status-chart-simple">
-      <div class="cute-status-list">
-        <div class="cute-stat-item mint">
-          <div class="cute-stat-info">
-            <span class="cute-dot"></span>
-            <span class="cute-stat-label">正常</span>
-          </div>
-          <div class="cute-stat-value">${active}</div>
-        </div>
-        
-        <div class="cute-stat-item amber">
-          <div class="cute-stat-info">
-            <span class="cute-dot"></span>
-            <span class="cute-stat-label">额度已用</span>
-          </div>
-          <div class="cute-stat-value">${used}</div>
-        </div>
-        
-        <div class="cute-stat-item rose">
-          <div class="cute-stat-info">
-            <span class="cute-dot"></span>
-            <span class="cute-stat-label">已封禁</span>
-          </div>
-          <div class="cute-stat-value">${suspended}</div>
-        </div>
-      </div>
+  canvas.innerHTML =
+    '<div class="k-status-summary" title="健康率 = 非封禁账号 / 总账号">' +
+      '<span>全部账号 <strong>' + grandTotal + '</strong></span>' +
+      '<span class="k-status-summary-sep">·</span>' +
+      '<span>非封禁 <strong>' + nonSuspended + '</strong></span>' +
+      '<span class="k-status-summary-sep">·</span>' +
+      '<span>健康率 <strong>' + formatStatusShare(nonSuspended, grandTotal) + '</strong></span>' +
+    '</div>' +
+    '<div class="k-status-groups">' +
+      renderStatusGroup('账号池', '未分配', pool) +
+      renderStatusGroup('已分配', '已发给买家', assigned) +
+    '</div>';
+}
 
-      <div class="cute-donut">
-        <svg width="160" height="160" viewBox="0 0 160 160" class="cute-donut-svg">
-          <defs>
-            <linearGradient id="gradActive" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#7dd3fc"/>
-              <stop offset="100%" stop-color="#34d399"/>
-            </linearGradient>
-            <linearGradient id="gradUsed" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#fcd34d"/>
-              <stop offset="100%" stop-color="#f59e0b"/>
-            </linearGradient>
-            <linearGradient id="gradSuspended" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#fda4af"/>
-              <stop offset="100%" stop-color="#fb7185"/>
-            </linearGradient>
-          </defs>
-          <circle cx="80" cy="80" r="${R}" fill="none" stroke="#f4f4f5" stroke-width="18"/>
-          ${active > 0 ? `<circle cx="80" cy="80" r="${R}" fill="none"
-              stroke="url(#gradActive)" stroke-width="18" stroke-linecap="round"
-              stroke-dasharray="${activeLen} ${C - activeLen}"
-              stroke-dashoffset="0"
-              class="cute-ring-segment"/>` : ''}
-          ${used > 0 ? `<circle cx="80" cy="80" r="${R}" fill="none"
-              stroke="url(#gradUsed)" stroke-width="18" stroke-linecap="round"
-              stroke-dasharray="${usedLen} ${C - usedLen}"
-              stroke-dashoffset="${-activeLen}"
-              class="cute-ring-segment delayed"/>` : ''}
-          ${suspended > 0 ? `<circle cx="80" cy="80" r="${R}" fill="none"
-              stroke="url(#gradSuspended)" stroke-width="18" stroke-linecap="round"
-              stroke-dasharray="${suspendedLen} ${C - suspendedLen}"
-              stroke-dashoffset="${-(activeLen + usedLen)}"
-              class="cute-ring-segment delayed-more"/>` : ''}
-        </svg>
-        <div class="cute-donut-center">
-          <div class="cute-donut-value">
-            ${pctLabel}<span>%</span>
-          </div>
-          <div class="cute-donut-label">健康率</div>
-        </div>
-      </div>
-    </div>
-  `;
+// 后端字段缺失时用三项之和兜底，保证「共 N 个」不会显示成 0。
+function normalizeStatusGroup(group) {
+  const active = Math.max(0, Number(group && group.active) || 0);
+  const used = Math.max(0, Number(group && group.used) || 0);
+  const suspended = Math.max(0, Number(group && group.suspended) || 0);
+  const total = Math.max(0, Number(group && group.total) || (active + used + suspended));
+  return { active: active, used: used, suspended: suspended, total: total };
+}
+
+function formatStatusShare(count, total) {
+  if (total <= 0) return '0%';
+  const pct = count / total * 100;
+  if (count > 0 && pct < 0.1) return '&lt;0.1%';
+  if (pct >= 99.95) return '100%';
+  return (Math.round(pct * 10) / 10) + '%';
+}
+
+function renderStatusGroup(title, subtitle, group) {
+  const rows = [
+    { key: 'active', label: '正常', cls: 'mint' },
+    { key: 'used', label: '额度已用', cls: 'amber' },
+    { key: 'suspended', label: '已封禁', cls: 'rose' }
+  ];
+
+  const listHtml = rows.map(function(row) {
+    const count = group[row.key] || 0;
+    return '<div class="cute-stat-item ' + row.cls + '">' +
+      '<div class="cute-stat-info">' +
+        '<span class="cute-dot"></span>' +
+        '<span class="cute-stat-label">' + row.label + '</span>' +
+      '</div>' +
+      '<div class="k-status-right">' +
+        '<span class="cute-stat-value">' + count + '</span>' +
+        '<span class="k-status-share">' + formatStatusShare(count, group.total) + '</span>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  // 健康率 = 非封禁 / 该栏总数；额度已用不算封禁，仍计入健康率
+  const healthy = group.total - group.suspended;
+  const healthText = group.total > 0
+    ? '共 ' + group.total + ' 个 · 健康率 ' + formatStatusShare(healthy, group.total)
+    : '共 0 个';
+
+  return '<section class="k-status-group">' +
+    '<div class="k-status-group-head">' +
+      '<div class="k-status-group-title">' +
+        '<span class="k-status-group-name">' + title + '</span>' +
+        '<span class="k-status-group-sub">' + subtitle + '</span>' +
+      '</div>' +
+      '<span class="k-status-group-total" title="健康率 = 非封禁账号 / 该栏账号总数">' + healthText + '</span>' +
+    '</div>' +
+    '<div class="cute-status-list">' + listHtml + '</div>' +
+  '</section>';
 }
 
 // 绘制卡密分布图表（表格模式，每个卡密类型为一列）

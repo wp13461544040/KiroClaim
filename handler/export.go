@@ -129,9 +129,9 @@ func applyExportFilters(c *gin.Context, q *gorm.DB) *gorm.DB {
 	case "false":
 		q = q.Where("used = ?", false)
 	}
-	if v := c.Query("status"); v != "" {
-		q = q.Where("status = ?", v)
-	}
+	// 健康状态筛选复用列表的同一套推导口径，否则导出「额度已用」会漏掉库存模式下
+	// status 仍为 active、但实际用过额度的账号。
+	q = applyHealthStatusFilter(q, c.Query("status"))
 	if v := c.Query("subscription"); v != "" {
 		q = q.Where("subscription = ?", v)
 	}

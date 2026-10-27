@@ -25,7 +25,6 @@ async function loadAccounts(page = 1) {
   if (accountStatusFilter) url += `&status=${accountStatusFilter}`;
   if (accountSubscriptionFilter) url += `&subscription=${encodeURIComponent(accountSubscriptionFilter)}`;
   if (accountEmailSuffixFilter) url += `&email_suffix=${encodeURIComponent(accountEmailSuffixFilter)}`;
-  if (accountCreditExhaustedFilter) url += '&credit_exhausted=true';
   if (accountKeyword) url += `&keyword=${encodeURIComponent(accountKeyword)}`;
   if (createdFrom) url += `&created_from=${createdFrom}`;
   if (createdTo) url += `&created_to=${createdTo}`;
@@ -48,13 +47,11 @@ async function loadAccounts(page = 1) {
       ? `${creditUsed.toFixed(1)} / ${creditLimit.toFixed(0)}`
       : '-';
     const checked = selectedAccountIds.has(a.ID) ? 'checked' : '';
-    // 派发只取额度一点没动过的账号，所以用过额度的号即使留在账号池里也发不出去。
-    // 库存模式开启后这类账号会常驻池中，状态列显示「已使用」而不是「正常」，
-    // 否则容易误判为有货可发。
-    // 封禁优先级更高：封禁账号即使用过额度也要显示「已封禁」。
-    const statusCell = a.Status === 'suspended'
-      ? healthBadge('suspended')
-      : (creditUsed > 0 ? healthBadge('used') : healthBadge(a.Status));
+    // 状态口径统一由 accountHealthStatus 推导（见 ui.js）：
+    // 封禁优先，其次只要用过额度就显示「额度已用」。
+    // 派发只取额度一点没动过的账号，所以用过额度的号即使留在账号池里也发不出去，
+    // 显示「正常」会被误判为有货可发。
+    const statusCell = healthBadge(accountHealthStatus(a));
     return `<tr>
       <td data-label="选择"><input type="checkbox" class="k-checkbox" ${checked} onchange="toggleAccountSelect(${a.ID}, this.checked)"></td>
       <td data-label="ID" style="color:#999">${a.ID}</td>
@@ -738,27 +735,10 @@ function pollImportStatus(taskId, total, resultEl, btn) {
 
 
 // 账号状态筛选
-// 新增：支持 credit_exhausted 参数（额度已用）
-let accountCreditExhaustedFilter = '';
-
+// 统一传 status 参数，后端按「健康状态」推导口径过滤：
+// active = 正常、used = 额度已用、suspended = 已封禁。
 function selectAccountStatus(value, text) {
   accountStatusFilter = value;
-  accountCreditExhaustedFilter = ''; // 清空额度筛选
-  document.getElementById('accountStatusText').textContent = text;
-
-  document.querySelectorAll('#accountStatusDropdown .k-dropdown-item').forEach(item => {
-    item.classList.remove('selected');
-  });
-  event.target.classList.add('selected');
-
-  toggleDropdown('accountStatusDropdown');
-  loadAccounts(1);
-}
-
-// 新增：专门用于筛选额度已用的函数
-function selectAccountCreditExhausted(text) {
-  accountStatusFilter = ''; // 清空健康状态筛选
-  accountCreditExhaustedFilter = 'true';
   document.getElementById('accountStatusText').textContent = text;
 
   document.querySelectorAll('#accountStatusDropdown .k-dropdown-item').forEach(item => {
@@ -827,7 +807,6 @@ function resetAccountFilters() {
   accountStatusFilter = '';
   accountSubscriptionFilter = '';
   accountEmailSuffixFilter = '';
-  accountCreditExhaustedFilter = '';
   accountKeyword = '';
 
   const keywordInput = document.getElementById('accountKeyword');
@@ -1145,13 +1124,9 @@ async function loadAssignedAccounts(page = 1) {
     const creditText = creditLimit > 0 ? `${creditUsed.toFixed(1)} / ${creditLimit.toFixed(0)}` : '-';
     const checked = selectedAssignedIds.has(a.ID) ? 'checked' : '';
 
-    // 正确判断健康状态：优先判断 suspended，然后判断额度是否用完
-    let healthStatus = 'active'; // 默认正常
-    if (a.Status === 'suspended') {
-      healthStatus = 'suspended'; // 已封禁
-    } else if (creditLimit > 0 && creditUsed >= creditLimit) {
-      healthStatus = 'used'; // 额度已用完
-    }
+    // 健康状态与账号池、概览「账号状态」共用同一口径：
+    // 封禁优先，其次只要用过额度就算「额度已用」。
+    const healthStatus = accountHealthStatus(a);
 
     const fmtTime = v => v ? new Date(v).toLocaleString('zh-CN', {hour12:false, month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'}) : '-';
 

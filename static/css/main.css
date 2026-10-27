@@ -1668,6 +1668,7 @@ tr:last-child td { border-bottom: none; }
 }
 .k-chart-skeleton .k-bar {
     flex: 1;
+    min-height: 40px;
     background: linear-gradient(180deg, #e4e4e7 0%, #f4f4f5 100%);
     border-radius: 4px;
     animation: shimmer-bar 1.4s ease-in-out infinite;
@@ -3131,5 +3132,126 @@ textarea.k-input::-webkit-scrollbar-corner {
   
   .cute-bar-legend {
     gap: 12px;
+  }
+}
+
+/* 概览「账号状态」：账号池 / 已分配分栏统计 */
+.k-card-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* 两栏状态需要自适应高度，取消 dashboard-chart 的固定高度 */
+#accountStatusChart.dashboard-chart {
+  height: auto;
+  min-height: 200px;
+}
+
+/* 全部账号健康率汇总 */
+.k-status-summary {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 4px 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.k-status-summary strong {
+  color: var(--text-main);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.k-status-summary-sep {
+  color: var(--border-strong);
+}
+
+.k-status-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  padding: 8px 4px;
+}
+
+.k-status-group {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.k-status-group:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 26px rgba(24, 24, 27, 0.06);
+}
+
+.k-status-group-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.k-status-group-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.k-status-group-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.k-status-group-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.k-status-group-total {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.k-status-group .cute-stat-item {
+  padding: 10px 12px;
+}
+
+.k-status-group .cute-stat-value {
+  font-size: 18px;
+}
+
+.k-status-right {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.k-status-share {
+  min-width: 44px;
+  text-align: right;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 768px) {
+  .k-card-hint {
+    display: none;
+  }
+
+  .k-status-groups {
+    grid-template-columns: 1fr;
   }
 }
