@@ -404,11 +404,14 @@ function renderPlanSelect(a, idx) {
   return `<select onchange="onPlanChange(${idx}, this)">${opts}</select>`
 }
 
-function renderLink(a) {
+function openLink(idx) {
+  const a = accounts[idx]
+  if (a && a.link) window.open(a.link, '_blank', 'noopener,noreferrer')
+}
+
+function renderLink(a, idx) {
   if (a.status !== 'success' || !a.link) return ''
-  return `<button class="link-btn" onclick="window.open(${JSON.stringify(a.link)},'_blank','noopener,noreferrer')">
-    🔗 在浏览器中打开
-  </button>`
+  return `<button class="link-btn" onclick="openLink(${idx})">🔗 在浏览器中打开</button>`
 }
 
 function renderTable() {
@@ -435,7 +438,7 @@ function renderTable() {
       </td>
       <td style="width:220px">${renderPlanSelect(a, idx)}</td>
       <td style="width:110px">${renderStatus(a, idx)}</td>
-      <td>${renderLink(a)}</td>
+      <td>${renderLink(a, idx)}</td>
       <td style="width:100px">${renderAction(a, idx)}</td>
     </tr>`).join('')
 
