@@ -794,6 +794,11 @@ func PurgeAllSoftDeletedData(c *gin.Context) {
 	}
 
 	for _, table := range tables {
+		// 表可能尚未迁移（例如商城功能未启用），跳过不存在的表
+		if !database.DB.Migrator().HasTable(table.Model) {
+			continue
+		}
+
 		var pending int64
 		if err := database.DB.Unscoped().Model(table.Model).
 			Where("deleted_at IS NOT NULL").
