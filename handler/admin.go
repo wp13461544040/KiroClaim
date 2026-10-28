@@ -546,6 +546,35 @@ func ListAccounts(c *gin.Context) {
 	}})
 }
 
+// GET /admin/accounts/:id/json
+// 获取单个账号的完整 JSON（包含凭证），用于一键复制
+func GetAccountJSON(c *gin.Context) {
+	id := c.Param("id")
+	accountID64, err := strconv.ParseUint(id, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "无效的 ID"})
+		return
+	}
+
+	var account model.Account
+	if err := database.DB.First(&account, uint(accountID64)).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 1, "message": "账号不存在"})
+		return
+	}
+
+	// AfterFind hook 已解密，直接返回明文凭证
+	accountJSON := gin.H{
+		"refreshToken": account.RefreshToken,
+		"accessToken":  account.AccessToken,
+		"clientId":     account.ClientId,
+		"clientSecret": account.ClientSecret,
+		"provider":     account.Provider,
+		"region":       account.Region,
+	}
+
+	c.JSON(http.StatusOK, gin.H{"code": 0, "data": accountJSON})
+}
+
 // DELETE /admin/accounts/:id
 func DeleteAccount(c *gin.Context) {
 	id := c.Param("id")

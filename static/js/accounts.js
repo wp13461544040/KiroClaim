@@ -70,6 +70,7 @@ async function loadAccounts(page = 1) {
       <td data-label="操作" class="account-action-cell">
         <div class="account-actions">
           <button class="ui-btn ui-btn-secondary ui-btn-sm" onclick="showAccountDetail(${a.ID})">详细</button>
+          <button class="ui-btn ui-btn-secondary ui-btn-sm" onclick="copyAccountJson(${a.ID}, this)">复制</button>
           <button class="ui-btn ui-btn-secondary ui-btn-sm" onclick="refreshAccount(${a.ID}, 'accounts', this)">刷新</button>
           <button class="ui-btn ui-btn-danger ui-btn-sm" onclick="deleteAccount(${a.ID})">删除</button>
         </div>
@@ -1150,6 +1151,7 @@ async function loadAssignedAccounts(page = 1) {
       <td data-label="操作" class="account-action-cell">
         <div class="account-actions">
           <button class="ui-btn ui-btn-secondary ui-btn-sm" onclick="showAccountDetail(${a.ID})">详细</button>
+          <button class="ui-btn ui-btn-secondary ui-btn-sm" onclick="copyAccountJson(${a.ID}, this)">复制</button>
           <button class="ui-btn ui-btn-secondary ui-btn-sm" onclick="refreshAccount(${a.ID}, 'assigned', this)">刷新</button>
           <button class="ui-btn ui-btn-danger ui-btn-sm" onclick="deleteAccount(${a.ID}, 'assigned')">删除</button>
         </div>
@@ -1266,5 +1268,65 @@ async function doClearAssignedAccounts() {
     loadStats && loadStats();
   } else {
     showToast('清空失败：' + (r.message || r.msg || '未知错误'), 'error');
+  }
+}
+
+// 复制账号 JSON
+async function copyAccountJson(id, btn) {
+  if (!btn) return;
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '复制中...';
+
+  try {
+    const r = await api('GET', `/admin/accounts/${id}/json`);
+    if (r.code !== 0) {
+      showToast('获取账号数据失败：' + (r.message || r.msg || '未知错误'), 'error');
+      btn.textContent = '失败';
+      setTimeout(() => {
+        btn.textContent = originalText;
+        btn.disabled = false;
+      }, 2000);
+      return;
+    }
+
+    // 格式化 JSON，便于阅读
+    const jsonText = JSON.stringify(r.data, null, 2);
+
+    // 使用 Clipboard API 复制到剪贴板
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(jsonText);
+      showToast('已复制账号 JSON 到剪贴板', 'success');
+      btn.textContent = '已复制';
+    } else {
+      // 降级方案：使用 textarea
+      const textarea = document.createElement('textarea');
+      textarea.value = jsonText;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        showToast('已复制账号 JSON 到剪贴板', 'success');
+        btn.textContent = '已复制';
+      } catch (e) {
+        showToast('复制失败，请手动复制', 'error');
+        btn.textContent = '失败';
+      }
+      document.body.removeChild(textarea);
+    }
+
+    setTimeout(() => {
+      btn.textContent = originalText;
+      btn.disabled = false;
+    }, 2000);
+  } catch (e) {
+    showToast('复制失败：' + e.message, 'error');
+    btn.textContent = '失败';
+    setTimeout(() => {
+      btn.textContent = originalText;
+      btn.disabled = false;
+    }, 2000);
   }
 }
