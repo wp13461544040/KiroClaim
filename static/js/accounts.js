@@ -1042,9 +1042,10 @@ async function restoreCreditUsedAccounts() {
   }
 }
 
-// 一键清空号池（高危操作，双重确认）
+// 一键清空账号池（高危操作，双重确认）
+// 只删除未分配（used = false）的账号，已分配账号不受影响。
 async function doClearAllAccounts() {
-  if (!confirm('此操作将删除号池中的【所有账号】，且不可恢复！\n\n确定要继续吗？')) return;
+  if (!confirm('此操作将删除账号池中的【所有未分配账号】，且不可恢复！\n\n已分配的账号不会被删除。\n\n确定要继续吗？')) return;
   var input = prompt('请输入「清空」两个字以确认操作：');
   if (input !== '清空') {
     showToast('操作已取消', 'info');
@@ -1053,7 +1054,7 @@ async function doClearAllAccounts() {
 
   var r = await api('POST', '/admin/accounts/clear-all', { confirm: true });
   if (r.code === 0) {
-    showToast('号池已清空，共删除 ' + (r.data?.deleted || 0) + ' 个账号', 'success');
+    showToast('账号池已清空，共删除 ' + (r.data?.deleted || 0) + ' 个未分配账号', 'success');
     selectedAccountIds.clear();
     updateAccountBatchBtn();
     loadAccounts(1);

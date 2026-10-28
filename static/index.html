@@ -656,6 +656,18 @@
                   查询库存 <code>GET /openapi/v1/stock</code>
                 </div>
               </div>
+
+              <div class="settings-panel" data-settings-panel="base" id="maintenancePanel">
+                <div class="settings-panel-title">数据库维护</div>
+                <div class="settings-panel-text" id="maintenancePurgePreview" style="color:var(--text-muted)">点击「预览」可查看各表待清理的软删除数据量</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+                  <button type="button" class="ui-btn ui-btn-secondary ui-btn-sm" onclick="previewPurgeAllSoftDeleted()">预览软删除数据</button>
+                  <button type="button" class="ui-btn ui-btn-danger ui-btn-sm" onclick="doPurgeAllSoftDeleted()">清理软删除数据</button>
+                </div>
+                <div class="settings-panel-text" style="margin-top:10px;font-size:12px;color:var(--text-muted)">
+                  GORM 的软删除只是标记 deleted_at，不释放磁盘空间。此操作会物理删除所有已标记删除的账号、卡密、订单等数据，不可恢复。
+                </div>
+              </div>
             </div>
 
             <div id="settingsResult" style="margin-top:18px"></div>

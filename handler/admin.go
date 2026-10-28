@@ -664,7 +664,8 @@ func DeleteAccountsByStatus(c *gin.Context) {
 
 // POST /admin/accounts/clear-all
 // Body: { "confirm": true }
-// 清空号池中所有账号（硬删除），需要 confirm=true。
+// 清空账号池中所有未分配账号（硬删除），需要 confirm=true。
+// 只删除 used = false 的账号，已分配账号不受影响。
 func ClearAllAccounts(c *gin.Context) {
 	var req struct {
 		Confirm bool `json:"confirm"`
@@ -678,14 +679,14 @@ func ClearAllAccounts(c *gin.Context) {
 		return
 	}
 
-	result := database.DB.Unscoped().Where("1 = 1").Delete(&model.Account{})
+	result := database.DB.Unscoped().Where("used = ?", false).Delete(&model.Account{})
 	if result.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": result.Error.Error()})
 		return
 	}
 
-	AddOpLogWithCtx(c, "clear", "清空号池，共删除 "+strconv.FormatInt(result.RowsAffected, 10)+" 个账号", "admin")
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "号池已清空", "data": gin.H{"deleted": result.RowsAffected}})
+	AddOpLogWithCtx(c, "clear", "清空账号池（未分配），共删除 "+strconv.FormatInt(result.RowsAffected, 10)+" 个账号", "admin")
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "账号池已清空", "data": gin.H{"deleted": result.RowsAffected}})
 }
 
 // POST /admin/accounts/clear-assigned
@@ -755,6 +756,98 @@ func PurgeSoftDeletedAccounts(c *gin.Context) {
 
 	AddOpLogWithCtx(c, "clear", "清理软删除残留账号，共删除 "+strconv.FormatInt(result.RowsAffected, 10)+" 个", "admin")
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "软删除残留账号已清理", "data": gin.H{"pending": pending, "deleted": result.RowsAffected}})
+}
+
+// POST /admin/maintenance/purge-all-soft-deleted
+// Body: { "confirm": true }
+// 清理所有表的软删除数据（包括账号、卡密、订单、商品等），释放磁盘空间。
+// GORM 的 gorm.Model 包含 DeletedAt 字段，普通删除只是软删除（设置时间戳），不真正释放空间。
+// 这会导致磁盘空间持续增长，此接口可以彻底清理所有软删除的数据。
+// confirm 不为 true 时只返回各表待清理数量，不执行删除。
+func PurgeAllSoftDeletedData(c *gin.Context) {
+	var req struct {
+		Confirm bool `json:"confirm"`
+	}
+	_ = c.ShouldBindJSON(&req)
+
+	type TableStats struct {
+		Name    string `json:"name"`
+		Pending int64  `json:"pending"`
+		Deleted int64  `json:"deleted"`
+	}
+
+	stats := []TableStats{}
+	var totalPending, totalDeleted int64
+
+	// 统计各表的软删除数据
+	tables := []struct {
+		Name  string
+		Model interface{}
+	}{
+		{"accounts", &model.Account{}},
+		{"cards", &model.Card{}},
+		{"users", &model.User{}},
+		{"commerce_products", &model.CommerceProduct{}},
+		{"commerce_orders", &model.CommerceOrder{}},
+		{"commerce_payment_channels", &model.CommercePaymentChannel{}},
+		{"commerce_payment_proofs", &model.CommercePaymentProof{}},
+	}
+
+	for _, table := range tables {
+		var pending int64
+		if err := database.DB.Unscoped().Model(table.Model).
+			Where("deleted_at IS NOT NULL").
+			Count(&pending).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "统计 " + table.Name + " 失败: " + err.Error()})
+			return
+		}
+
+		tableStat := TableStats{
+			Name:    table.Name,
+			Pending: pending,
+			Deleted: 0,
+		}
+		totalPending += pending
+
+		if req.Confirm && pending > 0 {
+			result := database.DB.Unscoped().Where("deleted_at IS NOT NULL").Delete(table.Model)
+			if result.Error != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "清理 " + table.Name + " 失败: " + result.Error.Error()})
+				return
+			}
+			tableStat.Deleted = result.RowsAffected
+			totalDeleted += result.RowsAffected
+		}
+
+		if pending > 0 {
+			stats = append(stats, tableStat)
+		}
+	}
+
+	if !req.Confirm {
+		c.JSON(http.StatusOK, gin.H{
+			"code":    0,
+			"message": "预览模式，未执行删除（传 confirm: true 执行）",
+			"data": gin.H{
+				"total_pending": totalPending,
+				"total_deleted": 0,
+				"tables":        stats,
+			},
+		})
+		return
+	}
+
+	logMsg := "清理所有表软删除数据，共删除 " + strconv.FormatInt(totalDeleted, 10) + " 条记录"
+	AddOpLogWithCtx(c, "purge", logMsg, "admin")
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "软删除数据已全部清理",
+		"data": gin.H{
+			"total_pending": totalPending,
+			"total_deleted": totalDeleted,
+			"tables":        stats,
+		},
+	})
 }
 
 // restoreCreditUsedAccountsQuery 圈定「因用过额度被自动移入已使用、但其实没发给任何人」的账号。

@@ -147,6 +147,7 @@ func main() {
 		admin.POST("/accounts/clear-assigned", handler.ClearAssignedAccounts)
 		admin.POST("/accounts/purge-soft-deleted", handler.PurgeSoftDeletedAccounts)
 		admin.POST("/accounts/restore-credit-used", handler.RestoreCreditUsedAccounts)
+		admin.POST("/maintenance/purge-all-soft-deleted", handler.PurgeAllSoftDeletedData)
 		admin.GET("/pool/stats", handler.PoolStats)
 		admin.POST("/accounts/cleanup-used-credit", handler.CleanupUsedCreditAccountsAPI)
 		admin.POST("/accounts/health-scan", handler.TriggerHealthScan)

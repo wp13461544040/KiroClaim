@@ -290,3 +290,54 @@ async function saveCurrentSettingsCategory() {
   if(currentSettingsCategory==='commerce'||currentSettingsCategory==='delivery')await saveCommerceSettingsConfig();
   else await saveSettings();
 }
+
+// 预览各表软删除数据量，不执行删除
+async function previewPurgeAllSoftDeleted() {
+  var preview = document.getElementById('maintenancePurgePreview');
+  if (preview) preview.textContent = '查询中...';
+  var r = await api('POST', '/admin/maintenance/purge-all-soft-deleted', {});
+  if (r.code !== 0) {
+    showToast('查询失败：' + (r.message || '未知错误'), 'error');
+    if (preview) preview.textContent = '查询失败';
+    return;
+  }
+  var data = r.data || {};
+  var total = data.total_pending || 0;
+  if (total === 0) {
+    if (preview) preview.textContent = '各表均无软删除数据，无需清理';
+    return;
+  }
+  var tables = data.tables || [];
+  var lines = ['共发现 ' + total + ' 条软删除数据：'];
+  tables.forEach(function(t) {
+    lines.push('  · ' + t.name + '：' + t.pending + ' 条');
+  });
+  if (preview) preview.textContent = lines.join('\n');
+}
+
+// 物理清理所有表的软删除数据（高危，双重确认）
+async function doPurgeAllSoftDeleted() {
+  if (!confirm('此操作将永久删除所有已被软删除的账号、卡密、订单等数据，不可恢复！\n\n确定要继续吗？')) return;
+  var input = prompt('请输入「清理」两个字以确认操作：');
+  if (input !== '清理') {
+    showToast('操作已取消', 'info');
+    return;
+  }
+  var preview = document.getElementById('maintenancePurgePreview');
+  if (preview) preview.textContent = '清理中，请稍候...';
+  var r = await api('POST', '/admin/maintenance/purge-all-soft-deleted', { confirm: true });
+  if (r.code !== 0) {
+    showToast('清理失败：' + (r.message || '未知错误'), 'error');
+    if (preview) preview.textContent = '清理失败';
+    return;
+  }
+  var data = r.data || {};
+  var total = data.total_deleted || 0;
+  showToast('清理完成，共删除 ' + total + ' 条软删除数据', 'success');
+  var tables = data.tables || [];
+  var lines = ['清理完成，共删除 ' + total + ' 条记录：'];
+  tables.forEach(function(t) {
+    if (t.deleted > 0) lines.push('  · ' + t.name + '：删除 ' + t.deleted + ' 条');
+  });
+  if (preview) preview.textContent = total > 0 ? lines.join('\n') : '无软删除数据，未执行任何删除';
+}
