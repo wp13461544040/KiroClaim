@@ -244,7 +244,11 @@ async function resolvePlans(a) {
 function parseJson(text) {
   let arr
   try { arr = JSON.parse(text) } catch(e) { showToast('JSON 格式错误: ' + e.message); return }
-  if (!Array.isArray(arr)) { showToast('需要 JSON 数组格式'); return }
+  // 兼容单个对象，自动包装成数组
+  if (!Array.isArray(arr)) {
+    if (arr && typeof arr === 'object') { arr = [arr] }
+    else { showToast('需要 JSON 对象或数组格式'); return }
+  }
   const list = arr.map(item => ({
     email:         item.email || '',
     refreshToken:  item.refreshToken || item.refresh_token || '',
@@ -335,7 +339,7 @@ function renderInputScreen() {
   <div class="card">
     <div class="input-header">
       <span class="label">输入账号 JSON</span>
-      <span class="hint">数组格式，每条含 refreshToken 等字段</span>
+      <span class="hint">支持单个对象或数组，每条含 refreshToken 等字段</span>
       <span class="spacer"></span>
       <label>
         <input type="file" id="fileInput" accept=".json" style="display:none" onchange="handleFile(event)">
