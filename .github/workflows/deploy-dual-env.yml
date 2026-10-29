@@ -1,0 +1,180 @@
+name: Deploy to Dual Environments
+
+# 自动部署到国内和 US 两个生产环境
+# 当 Docker 镜像构建完成后，自动触发服务器更新
+
+on:
+  # 当 Docker workflow 完成时自动触发
+  workflow_run:
+    workflows: ["Docker"]
+    types:
+      - completed
+    branches:
+      - main
+  # 支持手动触发
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: '选择部署环境'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - both
+          - china
+          - us
+
+permissions:
+  contents: read
+
+# 部署必须串行，避免并发部署导致的资源冲突
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy-china:
+    name: 部署到国内服务器
+    runs-on: ubuntu-latest
+    # 仅当 Docker 构建成功或手动触发时执行
+    if: |
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'both' || github.event.inputs.environment == 'china'))
+    environment: production-china
+    steps:
+      - name: 部署到国内环境
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_CHINA_HOST }}
+          port: ${{ secrets.DEPLOY_CHINA_PORT || 22 }}
+          username: ${{ secrets.DEPLOY_CHINA_USER }}
+          password: ${{ secrets.DEPLOY_CHINA_PASSWORD }}
+          script_stop: true
+          command_timeout: 30m
+          script: |
+            set -eu
+            echo "=========================================="
+            echo "🇨🇳 开始部署国内版本..."
+            echo "=========================================="
+            
+            cd /home/ubuntu/kiroclaim/
+            
+            echo "📊 检查容器状态..."
+            docker compose ps
+            
+            echo "📥 拉取最新镜像..."
+            docker compose pull kiroclaim
+            
+            echo "🚀 启动容器..."
+            docker compose up -d kiroclaim
+            
+            echo "🧹 清理未使用的镜像..."
+            docker image prune -f
+            
+            echo "🔄 重启容器确保更新生效..."
+            docker restart kiroclaim
+            
+            echo "⏳ 等待服务启动..."
+            sleep 10
+            
+            echo "✅ 检查容器状态..."
+            docker ps | grep kiroclaim || true
+            
+            echo "=========================================="
+            echo "✅ 国内环境部署完成！"
+            echo "=========================================="
+
+  deploy-us:
+    name: 部署到 US 服务器
+    runs-on: ubuntu-latest
+    # 仅当 Docker 构建成功或手动触发时执行
+    if: |
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'both' || github.event.inputs.environment == 'us'))
+    environment: production-us
+    # US 部署在国内部署之后（如果国内环境也在部署）
+    needs: [deploy-china]
+    # 即使国内部署被跳过也继续执行
+    if: always() && (needs.deploy-china.result == 'success' || needs.deploy-china.result == 'skipped')
+    steps:
+      - name: 部署到 US 环境
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_US_HOST }}
+          port: ${{ secrets.DEPLOY_US_PORT || 22 }}
+          username: ${{ secrets.DEPLOY_US_USER }}
+          password: ${{ secrets.DEPLOY_US_PASSWORD }}
+          script_stop: true
+          command_timeout: 30m
+          script: |
+            set -eu
+            echo "=========================================="
+            echo "🇺🇸 开始部署 US 版本..."
+            echo "=========================================="
+            
+            cd ~/kiroclaim
+            
+            echo "📥 拉取最新镜像..."
+            docker pull ghcr.io/wp13461544040/kiroclaim:latest
+            
+            echo "🚀 启动容器..."
+            docker compose up -d
+            
+            echo "🧹 清理未使用的镜像..."
+            docker image prune -f
+            
+            echo "🔄 重启容器确保更新生效..."
+            docker restart kiroclaim
+            
+            echo "⏳ 等待服务启动..."
+            sleep 10
+            
+            echo "✅ 检查容器状态..."
+            docker ps | grep kiroclaim || true
+            
+            echo "=========================================="
+            echo "✅ US 环境部署完成！"
+            echo "=========================================="
+
+  notify:
+    name: 部署结果通知
+    runs-on: ubuntu-latest
+    needs: [deploy-china, deploy-us]
+    if: always()
+    steps:
+      - name: 部署结果汇总
+        run: |
+          echo "=========================================="
+          echo "📊 部署结果汇总"
+          echo "=========================================="
+          echo ""
+          echo "🇨🇳 国内环境: ${{ needs.deploy-china.result }}"
+          echo "🇺🇸 US 环境: ${{ needs.deploy-us.result }}"
+          echo ""
+          
+          CHINA_RESULT="${{ needs.deploy-china.result }}"
+          US_RESULT="${{ needs.deploy-us.result }}"
+          
+          if [[ "$CHINA_RESULT" == "failure" ]] || [[ "$US_RESULT" == "failure" ]]; then
+            echo "=========================================="
+            echo "⚠️  部署过程中存在失败，请检查日志"
+            echo "=========================================="
+            exit 1
+          elif [[ "$CHINA_RESULT" == "success" ]] || [[ "$US_RESULT" == "success" ]]; then
+            echo "=========================================="
+            echo "✅ 部署成功完成"
+            echo "=========================================="
+            
+            # 显示部署的环境
+            if [[ "$CHINA_RESULT" == "success" ]] && [[ "$US_RESULT" == "success" ]]; then
+              echo "已部署: 国内 + US 双环境"
+            elif [[ "$CHINA_RESULT" == "success" ]]; then
+              echo "已部署: 国内环境"
+            elif [[ "$US_RESULT" == "success" ]]; then
+              echo "已部署: US 环境"
+            fi
+          else
+            echo "=========================================="
+            echo "ℹ️  部署已跳过或取消"
+            echo "=========================================="
+          fi
