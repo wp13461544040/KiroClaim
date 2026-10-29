@@ -87,15 +87,17 @@ jobs:
   deploy-us:
     name: 部署到 US 服务器
     runs-on: ubuntu-latest
-    # 仅当 Docker 构建成功或手动触发时执行
-    if: |
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
-      (github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'both' || github.event.inputs.environment == 'us'))
     environment: production-us
     # US 部署在国内部署之后（如果国内环境也在部署）
     needs: [deploy-china]
-    # 即使国内部署被跳过也继续执行
-    if: always() && (needs.deploy-china.result == 'success' || needs.deploy-china.result == 'skipped')
+    # 即使国内部署被跳过也继续执行，并检查触发条件
+    if: |
+      always() &&
+      (needs.deploy-china.result == 'success' || needs.deploy-china.result == 'skipped') &&
+      (
+        (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+        (github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'both' || github.event.inputs.environment == 'us'))
+      )
     steps:
       - name: 部署到 US 环境
         uses: appleboy/ssh-action@v1.2.0
